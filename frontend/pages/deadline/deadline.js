@@ -3,10 +3,10 @@
  * Tối ưu hóa 2 tầng: HTTP Cache + Optimistic UI 2 Phân khu Local Cache
  */
 
-let currentDate = new Date(2026, 9, 5); // Mặc định mốc ngày Thứ 2, 05/10/2026
-const todayDate = new Date(2026, 9, 5);  // Mốc ngày hiện tại để tính độ gấp màu sắc
-let currentViewMode = 'week';           // 'week' | 'month'
-let currentDeadlines = [];              // Danh sách deadline gộp từ 2 phân khu
+let currentDate = new Date(); // Mặc định thời điểm hôm nay thực tế của máy người dùng
+let todayDate = new Date();    // Mốc thời gian thực để tính toán màu sắc và độ gấp
+let currentViewMode = 'week';  // 'week' | 'month'
+let currentDeadlines = [];     // Danh sách deadline gộp từ 2 phân khu
 
 // ==========================================
 // 1. LOCAL CACHE 2 PHÂN KHU (STAGING BUFFER & OPTIMISTIC UI)
@@ -364,7 +364,7 @@ function clearScheduleTable() {
     });
 }
 
-function renderWeekSchedule(items, mondayDate, filterType = "0", todayDate = new Date(2026, 9, 5)) {
+function renderWeekSchedule(items, mondayDate, filterType = "0", todayDate = new Date()) {
     clearScheduleTable();
     if (!items || items.length === 0) return;
 
@@ -446,7 +446,7 @@ function renderWeekSchedule(items, mondayDate, filterType = "0", todayDate = new
     });
 }
 
-function renderMonthSchedule(items, year, month, filterType = "0", todayDate = new Date(2026, 9, 5)) {
+function renderMonthSchedule(items, year, month, filterType = "0", todayDate = new Date()) {
     const container = document.getElementById("monthGridBody");
     if (!container) return;
     container.innerHTML = '';
@@ -535,9 +535,10 @@ function renderMonthSchedule(items, year, month, filterType = "0", todayDate = n
 }
 
 function renderCurrentView() {
+    todayDate = new Date(); // Luôn lấy thời gian thực của máy tính
     if (currentViewMode === 'week') {
         updateWeekHeader();
-        renderWeekSchedule(currentDeadlines, getMonday(new Date(currentDate)), "0", todayDate);
+        renderWeekSchedule(currentDeadlines, getMonday(currentDate), "0", todayDate);
     } else {
         renderMonthSchedule(currentDeadlines, currentDate.getFullYear(), currentDate.getMonth(), "0", todayDate);
     }
@@ -545,13 +546,16 @@ function renderCurrentView() {
     const picker = $("#dateNgayXemLich").data("kendoDatePicker");
     if (picker) {
         picker.value(currentDate);
+    } else {
+        $("#dateNgayXemLich").val(formatDate(currentDate));
     }
 }
 
 function updateWeekHeader() {
-    const monday = getMonday(new Date(currentDate));
+    const monday = getMonday(currentDate);
     const dayIds = ['th-mon', 'th-tue', 'th-wed', 'th-thu', 'th-fri', 'th-sat', 'th-sun'];
     const dayNames = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật'];
+    const today = new Date();
 
     for (let i = 0; i < 7; i++) {
         const d = new Date(monday);
@@ -559,15 +563,28 @@ function updateWeekHeader() {
         const dateStr = formatDate(d);
         const th = document.getElementById(dayIds[i]);
         if (th) {
-            th.innerHTML = `<span>${dayNames[i]}</span><br><small class="date-label">${dateStr}</small>`;
+            const isToday = d.getFullYear() === today.getFullYear() &&
+                            d.getMonth() === today.getMonth() &&
+                            d.getDate() === today.getDate();
+            const todayBadge = isToday ? ' <b style="color: #1a73e8; font-size: 11px;">(Hôm nay)</b>' : '';
+            th.innerHTML = `<span>${dayNames[i]}${todayBadge}</span><br><small class="date-label">${dateStr}</small>`;
+            if (isToday) {
+                th.style.backgroundColor = '#e8f0fe';
+                th.style.borderBottom = '2px solid #1a73e8';
+            } else {
+                th.style.backgroundColor = '';
+                th.style.borderBottom = '';
+            }
         }
     }
 }
 
 function getMonday(d) {
-    const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-    return new Date(d.setDate(diff));
+    const clone = new Date(d);
+    const day = clone.getDay();
+    const diff = clone.getDate() - day + (day === 0 ? -6 : 1);
+    clone.setDate(diff);
+    return clone;
 }
 
 function formatDate(d) {
@@ -835,9 +852,9 @@ function printDeadlineDetail(id) {
 // ==========================================
 // 5. CỬA SỔ MODAL TẠO & SỬA DEADLINE (GOOGLE CALENDAR STYLE)
 // ==========================================
-let miniCalYear = 2026;
-let miniCalMonth = 9;
-let selectedModalDate = new Date(2026, 9, 12);
+let miniCalYear = new Date().getFullYear();
+let miniCalMonth = new Date().getMonth();
+let selectedModalDate = new Date(Date.now() + 7 * 86400000);
 let activeModalCategory = 'personal';
 let editingDeadlineId = null;
 
@@ -852,7 +869,7 @@ function openCreateDeadlineModal(category) {
     $('#btnModalSave').text('Lưu');
     setModalCategory(category || 'personal');
 
-    const nextWeek = new Date(currentDate);
+    const nextWeek = new Date();
     nextWeek.setDate(nextWeek.getDate() + 7);
     selectedModalDate = nextWeek;
     miniCalYear = selectedModalDate.getFullYear();
@@ -920,6 +937,18 @@ function toggleModalCalendarPopup(e) {
 
 function renderMiniCalGrid() {
     $('#miniCalTitle').text(`Tháng ${miniCalMonth + 1}, ${miniCalYear}`);
+    const today = new Date();
+    const todayZero = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const thisCalMonthStart = new Date(miniCalYear, miniCalMonth, 1);
+
+    // Vô hiệu hóa nút lùi tháng nếu đang xem tháng hiện tại (không cho lùi về tháng trong quá khứ)
+    if (thisCalMonthStart <= currentMonthStart) {
+        $('#btnPrevMiniCal').prop('disabled', true).css({ 'opacity': '0.25', 'cursor': 'not-allowed' });
+    } else {
+        $('#btnPrevMiniCal').prop('disabled', false).css({ 'opacity': '1', 'cursor': 'pointer' });
+    }
+
     const firstDay = new Date(miniCalYear, miniCalMonth, 1);
     const lastDay = new Date(miniCalYear, miniCalMonth + 1, 0);
     const startDayOfWeek = firstDay.getDay();
@@ -933,14 +962,28 @@ function renderMiniCalGrid() {
     const prevMonthLastDate = new Date(miniCalYear, miniCalMonth, 0).getDate();
     for (let i = startDayOfWeek - 1; i >= 0; i--) {
         const dNum = prevMonthLastDate - i;
-        html += `<div style="padding: 5px 0; color: #b0b4b8; cursor: pointer;" onclick="selectModalDate(${miniCalYear}, ${miniCalMonth - 1}, ${dNum})">${dNum}</div>`;
+        const cellDate = new Date(miniCalYear, miniCalMonth - 1, dNum);
+        if (cellDate < todayZero) {
+            html += `<div style="padding: 5px 0; color: #d0d4d9; cursor: not-allowed; user-select: none;" title="Không thể chọn ngày trong quá khứ">${dNum}</div>`;
+        } else {
+            html += `<div style="padding: 5px 0; color: #b0b4b8; cursor: pointer;" onclick="selectModalDate(${miniCalYear}, ${miniCalMonth - 1}, ${dNum})">${dNum}</div>`;
+        }
     }
     for (let d = 1; d <= lastDay.getDate(); d++) {
+        const cellDate = new Date(miniCalYear, miniCalMonth, d);
+        const isPast = cellDate < todayZero;
+        const isToday = cellDate.getTime() === todayZero.getTime();
         const isSelected = selectedModalDate.getFullYear() === miniCalYear &&
                            selectedModalDate.getMonth() === miniCalMonth &&
                            selectedModalDate.getDate() === d;
-        if (isSelected) {
+
+        if (isPast) {
+            // Ngày trong quá khứ: Làm mờ, khóa click, thông báo không thể chọn
+            html += `<div style="padding: 5px 0; color: #d0d4d9; cursor: not-allowed; user-select: none;" title="Không thể chọn ngày trong quá khứ">${d}</div>`;
+        } else if (isSelected) {
             html += `<div style="padding: 5px 0; display: flex; align-items: center; justify-content: center;"><span style="width: 24px; height: 24px; line-height: 24px; background: #1a73e8; color: #fff; border-radius: 50%; font-weight: bold; cursor: pointer;">${d}</span></div>`;
+        } else if (isToday) {
+            html += `<div style="padding: 5px 0; color: #1a73e8; font-weight: bold; cursor: pointer; border-radius: 50%;" title="Hôm nay (Tính từ hiện tại)" onclick="selectModalDate(${miniCalYear}, ${miniCalMonth}, ${d})">${d}</div>`;
         } else {
             html += `<div style="padding: 5px 0; color: #1f1f1f; cursor: pointer; border-radius: 50%;" onclick="selectModalDate(${miniCalYear}, ${miniCalMonth}, ${d})">${d}</div>`;
         }
@@ -956,6 +999,12 @@ function renderMiniCalGrid() {
 
 function prevMiniCalMonth(e) {
     if (e) e.stopPropagation();
+    const today = new Date();
+    const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const targetMonthStart = new Date(miniCalYear, miniCalMonth - 1, 1);
+    if (targetMonthStart < currentMonthStart) {
+        return; // Không cho phép lùi về các tháng trong quá khứ
+    }
     miniCalMonth--;
     if (miniCalMonth < 0) { miniCalMonth = 11; miniCalYear--; }
     renderMiniCalGrid();
@@ -969,7 +1018,17 @@ function nextMiniCalMonth(e) {
 }
 
 function selectModalDate(y, m, d) {
-    selectedModalDate = new Date(y, m, d);
+    const targetDate = new Date(y, m, d);
+    const todayZero = new Date();
+    todayZero.setHours(0, 0, 0, 0);
+
+    if (targetDate < todayZero) {
+        if (typeof toastr !== 'undefined') toastr.warning("Không thể chọn ngày trong quá khứ!");
+        else alert("Không thể chọn ngày trong quá khứ!");
+        return;
+    }
+
+    selectedModalDate = targetDate;
     miniCalYear = selectedModalDate.getFullYear();
     miniCalMonth = selectedModalDate.getMonth();
     $('#modalDateText').text(formatVietnameseDate(selectedModalDate));
@@ -1001,6 +1060,16 @@ async function saveNewDeadlineFromModal() {
     const hh = String(hour).padStart(2, '0');
     const mm = String(minute).padStart(2, '0');
     const dueDateStr = `${y}-${m}-${d}T${hh}:${mm}:00`;
+
+    // KIỂM TRA THỜI GIAN: KHÔNG ĐƯỢC CHỌN THỜI ĐIỂM TRONG QUÁ KHỨ
+    const dueDateTime = new Date(dueDateStr);
+    const now = new Date();
+    if (dueDateTime < now) {
+        const errorMsg = "Thời hạn nộp không thể ở trong quá khứ! Vui lòng chọn thời điểm từ hiện tại trở đi.";
+        if (typeof toastr !== 'undefined') toastr.warning(errorMsg);
+        else alert(errorMsg);
+        return;
+    }
 
     if (editingDeadlineId) {
         // CẬP NHẬT VỚI OPTIMISTIC UI (TỨC THÌ 0.01s)
@@ -1114,7 +1183,8 @@ $('#btn_Tiep').click(function () {
 
 // Nút Hiện tại
 $('#btn_HienTai').click(function () {
-    currentDate = new Date(2026, 9, 5);
+    currentDate = new Date();
+    todayDate = new Date();
     renderCurrentView();
 });
 
