@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/api/deadlines/:id", "destination": "/api/deadlines.js?id=:id" },
+    { "source": "/api/deadlines", "destination": "/api/deadlines.js" },
+    { "source": "/deadline", "destination": "/frontend/pages/deadline/index.html" },
+    { "source": "/deadline.js", "destination": "/frontend/pages/deadline/deadline.js" },
+    { "source": "/deadline.css", "destination": "/frontend/pages/deadline/deadline.css" },
+    { "source": "/shared/(.*)", "destination": "/frontend/shared/$1" },
+    { "source": "/", "destination": "/frontend/pages/deadline/index.html" }
+  ]
+}

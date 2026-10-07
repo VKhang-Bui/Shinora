@@ -1,0 +1,173 @@
+/**
+ * DEADLINE TRACKER - CUSTOM STYLES
+ * Chứa toàn bộ CSS riêng của Module Quản lý Deadline
+ */
+
+/* KHUNG GIAO DIỆN CHÍNH & MỞ RỘNG TRÀN VIỀN */
+.custom-logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    text-decoration: none;
+}
+.custom-logo svg {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+}
+.brand-text {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+.brand-title {
+    color: #003763;
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    line-height: 1.2;
+}
+.brand-subtitle {
+    color: #ff851b;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+.container, 
+.container-fluid,
+#full-resize-table {
+    max-width: 100% !important;
+    width: 100% !important;
+    padding-left: 20px !important;
+    padding-right: 20px !important;
+}
+.header .container,
+.header .container-fluid {
+    max-width: 100% !important;
+    width: 100% !important;
+    padding-left: 20px !important;
+    padding-right: 20px !important;
+}
+.wrapper {
+    max-width: 100% !important;
+    width: 100% !important;
+}
+.table-responsive {
+    width: 100% !important;
+}
+.fl-table {
+    width: 100% !important;
+}
+
+/* HIỆU ỨNG THẺ DEADLINE (TASK CARD) */
+.deadline-card {
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    cursor: pointer;
+}
+.deadline-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.15) !important;
+}
+
+/* POPUP LỊCH VÀ NÚT ĐIỀU HƯỚNG THÁNG KENDO */
+.k-animation-container,
+.k-calendar-container,
+.k-popup {
+    z-index: 99999 !important;
+}
+.k-calendar {
+    background: #fff !important;
+    border: 1px solid #c2cad8 !important;
+    border-radius: 4px !important;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.18) !important;
+    width: 250px !important;
+}
+.k-calendar .k-header {
+    background: #f8f9fa !important;
+    border-bottom: 1px solid #e9ecef !important;
+    padding: 6px 10px !important;
+}
+.k-calendar .k-header .k-link {
+    color: #003763 !important;
+    font-weight: bold !important;
+}
+.k-calendar .k-nav-prev .k-icon:before,
+.k-icon.k-i-arrow-w:before,
+.k-icon.k-i-arrow-60-left:before {
+    font-family: FontAwesome !important;
+    content: "\f0d9" !important;
+    font-size: 14px !important;
+    color: #003763 !important;
+}
+.k-calendar .k-nav-next .k-icon:before,
+.k-icon.k-i-arrow-e:before,
+.k-icon.k-i-arrow-60-right:before {
+    font-family: FontAwesome !important;
+    content: "\f0da" !important;
+    font-size: 14px !important;
+    color: #003763 !important;
+}
+.k-calendar td.k-state-selected .k-link {
+    background-color: #0073cf !important;
+    color: #fff !important;
+    font-weight: bold !important;
+}
+.k-calendar td.k-state-hover .k-link {
+    background-color: #9ad8fb !important;
+    color: #000 !important;
+}
+
+/* CÁC NÚT THAO TÁC TRÊN POPOVER VÀ MODAL */
+.btn-detail-icon {
+    background: none;
+    border: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #5f6368;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+.btn-detail-icon:hover {
+    background-color: rgba(60, 64, 67, 0.08);
+    color: #202124;
+}
+.detail-more-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 18px;
+    color: #3c4043;
+    text-decoration: none;
+    font-size: 13.5px;
+    font-weight: 500;
+    transition: background 0.15s;
+}
+.detail-more-item:hover {
+    background-color: #f1f3f4;
+    color: #202124;
+}
+
+/* POPOVER NỔI BÊN CẠNH THẺ DEADLINE */
+.deadline-detail-popover {
+    position: fixed;
+    z-index: 99999;
+    background: #ffffff;
+    border-radius: 16px;
+    width: 420px;
+    max-width: calc(100vw - 32px);
+    box-shadow: 0 10px 32px rgba(60,64,67,0.22), 0 2px 8px rgba(60,64,67,0.12);
+    padding: 12px 18px 18px 18px;
+    border: 1px solid #dadce0;
+    animation: fadeInPopover 0.12s ease-out;
+}
+
+@keyframes fadeInPopover {
+    from { opacity: 0; transform: scale(0.96); }
+    to { opacity: 1; transform: scale(1); }
+}

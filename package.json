@@ -1,0 +1,20 @@
+{
+  "name": "portal-deadline-tracker",
+  "version": "1.0.0",
+  "description": "Hệ thống Quản lý Deadline theo Tuần & Tháng kết nối Cơ Sở Dữ Liệu SQL thật (SQLite Native)",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "node backend/server.js",
+    "test": "node tests/setup_test_db.js && DB_PATH=/tmp/test_deadlines.sqlite PORT=3001 node -e \"require('./backend/server'); setTimeout(() => { require('child_process').fork('./tests/run_tests.js', { env: { PORT: 3001 } }).on('exit', code => process.exit(code)); }, 500);\"",
+    "test:docker": "docker build -f Dockerfile.test -t deadline-tracker-test . && docker run --rm deadline-tracker-test"
+  },
+  "keywords": [
+    "deadline-tracker",
+    "portal",
+    "sqlite",
+    "sql"
+  ],
+  "author": "Khang Van",
+  "license": "ISC"
+}

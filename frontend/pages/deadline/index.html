@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>Quản lý Deadline theo tuần - Portal Sinh Viên</title>
+
+    <!-- FONT VÀ CSS CHUNG CỦA TOÀN BỘ HỆ THỐNG PORTAL -->
+    <link rel="stylesheet" href="../../shared/css/embedded-fonts.css">
+    <link rel="stylesheet" type="text/css" href="../../shared/css/main.css">
+    <link rel="stylesheet" type="text/css" href="../../shared/css/components.min.css">
+    <link rel="stylesheet" type="text/css" href="../../shared/css/style.css">
+    <link rel="stylesheet" type="text/css" href="../../shared/css/base.css">
+    <link rel="stylesheet" type="text/css" href="../../shared/css/responsive.css">
+    <link rel="stylesheet" type="text/css" href="../../shared/css/kendo.common.min.css">
+    <link rel="stylesheet" type="text/css" href="../../shared/css/kendo.cms.min.css">
+    <link rel="stylesheet" type="text/css" href="../../shared/css/toastr.min.css">
+
+    <!-- CSS RIÊNG CỦA MODULE DEADLINE TRACKER -->
+    <link rel="stylesheet" type="text/css" href="./deadline.css">
+</head>
+<body>
+    <div id="focus-overlay"></div>
+    <div class="wrapper">
+        
+<!-- HEADER TRÊN CÙNG: LOGO HỆ THỐNG & TÀI KHOẢN -->
+<header class="header">
+    <div class="container-fluid">
+        <div class="header-content">
+            <div class="logo">
+                <a href="javascript:void(0)" class="custom-logo" title="Hệ Thống Quản Lý Deadline">
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="3" y="4" width="18" height="18" rx="3" fill="#003763"/>
+                        <path d="M3 9H21" stroke="white" stroke-width="2"/>
+                        <circle cx="8" cy="14" r="1.5" fill="#71cb35"/>
+                        <circle cx="12" cy="14" r="1.5" fill="#ff851b"/>
+                        <circle cx="16" cy="14" r="1.5" fill="#1da1f2"/>
+                        <path d="M8 2V5" stroke="#003763" stroke-width="2" stroke-linecap="round"/>
+                        <path d="M16 2V5" stroke="#003763" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    <div class="brand-text">
+                        <span class="brand-title">DEADLINE TRACKER</span>
+                        <span class="brand-subtitle">PORTAL QUẢN LÝ DEADLINE</span>
+                    </div>
+                </a>
+            </div>
+
+            <div class="menu-btn">
+                <a href="javascript:void(0)" title=""><i class="fa fa-bars"></i></a>
+            </div>
+
+            <div class="user-account dropdown">
+                <div class="user-info" data-bs-toggle="dropdown" style="cursor: pointer;">
+                    <div style="width: 32px; height: 32px; border-radius: 50%; background: #0073cf; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; float: left; margin-right: 8px;">
+                        K
+                    </div>
+                    <span style="line-height: 32px; font-weight: 600; color: #003763;">Thành viên nhóm</span>
+                    <i class="fa fa-angle-down" style="margin-left: 5px;"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</header>
+
+<div class="main-content">
+    <div class="container-fluid" id="full-resize-table">
+        <div class="main-section-content" id="contnet">
+            <div class="row">
+                
+<!-- THANH ĐIỀU KHIỂN BÊN TRÁI (SIDEBAR PORTAL CHUNG) -->
+<div class="col-md-2 d-none d-sm-block">
+    <div class="box-df p-0">
+        <div id="accordion-menu" class="accordion-menu">
+            <ul>
+                <li>
+                    <a href="javascript:void(0)"><i class="fa fa-home"></i><span>TRANG CHỦ</span></a>
+                </li>
+                <li>
+                    <a href="javascript:void(0)"><i class="fa fa-calendar-check-o"></i><span>DEADLINE</span><span class="submenu-indicator"><i class="fa fa-angle-down"></i></span></a>
+                    <ul class="submenu" style="display: block;">
+                        <li>
+                            <a href="javascript:void(0)" id="sidebar_link_tuan" onclick="switchViewMode('week')" style="color: #ff851b; font-weight: bold;">
+                                Deadline theo tuần
+                            </a>
+                        </li>
+                        <li>
+                            <a href="javascript:void(0)" id="sidebar_link_thang" onclick="switchViewMode('month')">
+                                Deadline theo tháng
+                            </a>
+                        </li>
+                    </ul>
+                </li>
+                <li>
+                    <a href="javascript:void(0)"><i class="fa fa-tasks"></i><span>DỰ ÁN &amp; TIẾN ĐỘ</span><span class="submenu-indicator"><i class="fa fa-angle-down"></i></span></a>
+                    <ul class="submenu">
+                        <li><a href="javascript:void(0)">Đồ án tốt nghiệp</a></li>
+                        <li><a href="javascript:void(0)">Nghiên cứu Lab</a></li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- NỘI DUNG CHÍNH (COL-MD-10): MODULE DEADLINE TRACKER -->
+<div class="col-md-10 col-xs-12">
+    <div class="box-df">
+        <div class="portlet">
+            <!-- HÀNG 1: TIÊU ĐỀ + THANH TÌM KIẾM TRUY VẤN SQL KÉO DÀI HẾT BẢNG -->
+            <div class="portlet-header-row" style="display: flex; align-items: center; gap: 15px; margin-bottom: 14px; width: 100%;">
+                <span class="caption-subject bold" id="portletTitleText" style="font-size: 16px; font-weight: bold; white-space: nowrap; margin: 0; color: #003763;">Bảng theo dõi Deadline theo tuần</span>
+                
+                <div style="flex: 1; display: flex; position: relative;">
+                    <form onsubmit="event.preventDefault();" style="margin: 0; display: flex; width: 100%;">
+                        <input type="text" id="k" name="k" placeholder="Tìm kiếm deadline trong CSDL SQL..." style="width: 100%; height: 34px; padding: 4px 35px 4px 12px; border: 1px solid #c2cad8; border-radius: 4px; font-size: 13px; outline: none; background: #fff;">
+                        <button type="submit" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #666; cursor: pointer; padding: 0;"><i class="fa fa-search"></i></button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- HÀNG 2: TOOLBAR ĐIỀU HƯỚNG VÀ NÚT TẠO DEADLINE (GOOGLE CALENDAR STYLE) -->
+            <div class="actions" style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; padding: 0; float: none; width: 100%;">
+                <!-- BÊN TRÁI: NÚT TẠO DROPDOWN -->
+                <div class="create-dropdown-container" style="position: relative; display: inline-block;">
+                    <button type="button" id="btn_CreateDropdown" onclick="toggleCreateDropdown(event)" style="background: #ffffff; border: 1px solid #dadce0; border-radius: 20px; padding: 5px 16px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 3px rgba(60,64,67,0.25); cursor: pointer; height: 32px; transition: box-shadow 0.2s, background-color 0.2s;">
+                        <i class="fa fa-plus" style="color: #1a73e8; font-size: 13px; font-weight: bold;"></i>
+                        <span style="font-size: 13px; font-weight: 600; color: #3c4043;">Tạo</span>
+                        <i class="fa fa-caret-down" style="color: #5f6368; font-size: 12px; margin-left: 2px;"></i>
+                    </button>
+                    <!-- MENU CON: CÁ NHÂN & CẢ NHÓM -->
+                    <div id="createDropdownMenu" style="display: none; position: absolute; left: 0; top: 38px; background: #ffffff; min-width: 145px; border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.18); z-index: 99999; border: 1px solid #dadce0; padding: 4px 0;">
+                        <a href="javascript:void(0);" onclick="openCreateDeadlineModal('personal')" style="display: flex; align-items: center; gap: 10px; padding: 8px 16px; color: #3c4043; text-decoration: none; font-size: 13px; font-weight: 500;">
+                            <i class="fa fa-user" style="color: #1a73e8; width: 16px;"></i> Cá nhân
+                        </a>
+                        <a href="javascript:void(0);" onclick="openCreateDeadlineModal('group')" style="display: flex; align-items: center; gap: 10px; padding: 8px 16px; color: #3c4043; text-decoration: none; font-size: 13px; font-weight: 500;">
+                            <i class="fa fa-users" style="color: #0f9d58; width: 16px;"></i> Cả nhóm
+                        </a>
+                    </div>
+                </div>
+
+                <!-- BÊN PHẢI: CỤM CHỌN NGÀY VÀ CÁC NÚT ĐIỀU HƯỚNG -->
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <input id="dateNgayXemLich" name="dateNgayXemLich" type="text" value="05/10/2026">
+
+                    <a href="javascript:void(0);" class="btn btn-action" id="btn_HienTai" style="padding: 5px 12px; font-size: 12px; height: 30px; display: inline-flex; align-items: center;">
+                        <i class="fa fa-calendar" style="margin-right: 5px;"></i> Hiện tại
+                    </a>
+                    <a href="javascript:void(0);" class="btn btn-action" id="btn_InLich" onclick="window.print()" style="padding: 5px 12px; font-size: 12px; height: 30px; display: inline-flex; align-items: center;">
+                        <i class="fa fa-print" style="margin-right: 5px;"></i> In lịch
+                    </a>
+                    <a href="javascript:void(0);" class="btn btn-action" id="btn_TroVe" style="padding: 5px 12px; font-size: 12px; height: 30px; display: inline-flex; align-items: center;">
+                        <i class="fa fa-angle-left" style="margin-right: 5px;"></i> Trở về
+                    </a>
+                    <a href="javascript:void(0);" class="btn btn-action" id="btn_Tiep" style="padding: 5px 12px; font-size: 12px; height: 30px; display: inline-flex; align-items: center;">
+                        Tiếp <i class="fa fa-angle-right" style="margin-left: 5px;"></i>
+                    </a>
+                    <a href="javascript:void(0);" class="btn btn-action" id="full-table" style="padding: 5px 10px; font-size: 12px; height: 30px; display: inline-flex; align-items: center;">
+                        <span class="glyphicon glyphicon-resize-full"></span>
+                    </a>
+                </div>
+            </div>
+
+            <!-- BẢNG DEADLINE THEO TUẦN -->
+            <div id="viewLichTheoTuan">
+                <div class="table-responsive">
+                    <table class="fl-table table table-bordered text-center no-footer dtr-inline" width="100%" role="grid">
+                        <thead>
+                            <tr role="row">
+                                <th style="width: 90px;">Khung giờ / Ca</th>
+                                <th id="th-mon"><span>Thứ 2</span><br><small class="date-label">--/--/----</small></th>
+                                <th id="th-tue"><span>Thứ 3</span><br><small class="date-label">--/--/----</small></th>
+                                <th id="th-wed"><span>Thứ 4</span><br><small class="date-label">--/--/----</small></th>
+                                <th id="th-thu"><span>Thứ 5</span><br><small class="date-label">--/--/----</small></th>
+                                <th id="th-fri"><span>Thứ 6</span><br><small class="date-label">--/--/----</small></th>
+                                <th id="th-sat"><span>Thứ 7</span><br><small class="date-label">--/--/----</small></th>
+                                <th id="th-sun"><span>Chủ nhật</span><br><small class="date-label">--/--/----</small></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- CA SÁNG -->
+                            <tr role="row">
+                                <td><b>Sáng</b><br><small style="color: #888;">(Trước 12:00)</small></td>
+                                <td id="cell-mon-sang"></td>
+                                <td id="cell-tue-sang"></td>
+                                <td id="cell-wed-sang"></td>
+                                <td id="cell-thu-sang"></td>
+                                <td id="cell-fri-sang"></td>
+                                <td id="cell-sat-sang"></td>
+                                <td id="cell-sun-sang"></td>
+                            </tr>
+                            <!-- CA CHIỀU -->
+                            <tr role="row">
+                                <td><b>Chiều</b><br><small style="color: #888;">(12:00 - 18:00)</small></td>
+                                <td id="cell-mon-chieu"></td>
+                                <td id="cell-tue-chieu"></td>
+                                <td id="cell-wed-chieu"></td>
+                                <td id="cell-thu-chieu"></td>
+                                <td id="cell-fri-chieu"></td>
+                                <td id="cell-sat-chieu"></td>
+                                <td id="cell-sun-chieu"></td>
+                            </tr>
+                            <!-- CA TỐI -->
+                            <tr role="row">
+                                <td><b>Tối</b><br><small style="color: #888;">(Sau 18:00 - 23:59)</small></td>
+                                <td id="cell-mon-toi"></td>
+                                <td id="cell-tue-toi"></td>
+                                <td id="cell-wed-toi"></td>
+                                <td id="cell-thu-toi"></td>
+                                <td id="cell-fri-toi"></td>
+                                <td id="cell-sat-toi"></td>
+                                <td id="cell-sun-toi"></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- BẢNG DEADLINE THEO THÁNG (LƯỚI 7 CỘT X 5-6 HÀNG) -->
+            <div id="viewLichTheoThang" style="display: none;">
+                <div class="table-responsive">
+                    <table class="fl-table table table-bordered text-center no-footer dtr-inline" width="100%" role="grid">
+                        <thead>
+                            <tr role="row">
+                                <th style="width: 14.28%;">Thứ 2</th>
+                                <th style="width: 14.28%;">Thứ 3</th>
+                                <th style="width: 14.28%;">Thứ 4</th>
+                                <th style="width: 14.28%;">Thứ 5</th>
+                                <th style="width: 14.28%;">Thứ 6</th>
+                                <th style="width: 14.28%;">Thứ 7</th>
+                                <th style="width: 14.28%;">Chủ nhật</th>
+                            </tr>
+                        </thead>
+                        <tbody id="monthGridBody">
+                            <!-- Render tự động từ CSDL SQL -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- CHÚ THÍCH MÀU SẮC DEADLINE: 5 MỐC CHUẨN -->
+            <div class="tableGC" style="margin-top: 15px; background: #fdfdfd; padding: 10px 15px; border-radius: 6px; border: 1px solid #e8e8e8;">
+                <ul style="display: flex; flex-wrap: wrap; align-items: center; gap: 24px; padding: 0; margin: 0; list-style: none;">
+                    <li style="display: flex; align-items: center; gap: 8px;">
+                        <span style="width: 16px; height: 16px; background-color: #adb5bd; border: 1px solid #6c757d; border-radius: 3px; display: inline-block;"></span>
+                        <label style="margin: 0; font-size: 13px; font-weight: 600; color: #495057;">pass</label>
+                    </li>
+                    <li style="display: flex; align-items: center; gap: 8px;">
+                        <span style="width: 16px; height: 16px; background-color: #ffa39e; border: 1px solid #f5222d; border-radius: 3px; display: inline-block;"></span>
+                        <label style="margin: 0; font-size: 13px; font-weight: 600; color: #820014;">3 ngày</label>
+                    </li>
+                    <li style="display: flex; align-items: center; gap: 8px;">
+                        <span style="width: 16px; height: 16px; background-color: #ffd591; border: 1px solid #fa541c; border-radius: 3px; display: inline-block;"></span>
+                        <label style="margin: 0; font-size: 13px; font-weight: 600; color: #871400;">1 tuần</label>
+                    </li>
+                    <li style="display: flex; align-items: center; gap: 8px;">
+                        <span style="width: 16px; height: 16px; background-color: #ffe58f; border: 1px solid #faad14; border-radius: 3px; display: inline-block;"></span>
+                        <label style="margin: 0; font-size: 13px; font-weight: 600; color: #613400;">3 tuần</label>
+                    </li>
+                    <li style="display: flex; align-items: center; gap: 8px;">
+                        <span style="width: 16px; height: 16px; background-color: #eaff8f; border: 1px solid #a0d911; border-radius: 3px; display: inline-block;"></span>
+                        <label style="margin: 0; font-size: 13px; font-weight: 600; color: #3f6600;">2 tháng</label>
+                    </li>
+                </ul>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+</div>
+
+<!-- CỬA SỔ MODAL TẠO & SỬA DEADLINE (CHỈ MỞ KHI NHẤN NÚT TẠO HOẶC NHẤN CÂY BÚT CHÌ) -->
+<div id="createDeadlineModalOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.4); z-index: 999999; align-items: center; justify-content: center;">
+    <div class="google-cal-modal" style="background: #ffffff; border-radius: 12px; width: 460px; max-width: 95vw; box-shadow: 0 24px 38px 3px rgba(0,0,0,0.14), 0 9px 46px 8px rgba(0,0,0,0.12); padding: 18px 24px; position: relative;">
+        <!-- DẤU KÉO VÀ NÚT ĐÓNG -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <span style="color: #5f6368; font-size: 18px; cursor: move; line-height: 1;">&#8801;</span>
+            <button type="button" onclick="closeCreateDeadlineModal()" style="background: none; border: none; font-size: 22px; color: #5f6368; cursor: pointer; padding: 0 4px; line-height: 1;">&times;</button>
+        </div>
+
+        <!-- Ô NHẬP TIÊU ĐỀ DEADLINE -->
+        <div style="margin-bottom: 16px;">
+            <input type="text" id="modalInputTitle" placeholder="Thêm tiêu đề" style="width: 100%; border: none; border-bottom: 2px solid #1a73e8; font-size: 19px; font-weight: 500; color: #1f1f1f; padding: 6px 0; outline: none; background: transparent;">
+        </div>
+
+        <!-- TABS CHUYỂN ĐỔI: CÁ NHÂN & CẢ NHÓM -->
+        <div style="display: flex; gap: 8px; margin-bottom: 20px;">
+            <button type="button" id="tabBtnPersonal" onclick="setModalCategory('personal')" style="padding: 6px 16px; border-radius: 16px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; background: #c2e7ff; color: #001d35; transition: background 0.15s;">
+                Cá nhân
+            </button>
+            <button type="button" id="tabBtnGroup" onclick="setModalCategory('group')" style="padding: 6px 16px; border-radius: 16px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; background: #f1f3f4; color: #444746; transition: background 0.15s;">
+                Cả nhóm
+            </button>
+        </div>
+
+        <!-- THỜI ĐIỂM HẠN CHÓT: [NGÀY] [GIỜ] -->
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 22px; position: relative;">
+            <i class="fa fa-clock-o" style="font-size: 18px; color: #5f6368; width: 22px; text-align: center;"></i>
+
+            <div id="modalDateBtn" onclick="toggleModalCalendarPopup(event)" style="background: #f1f3f4; border-radius: 4px; padding: 6px 12px; font-size: 13px; font-weight: 600; color: #1f1f1f; cursor: pointer; border: 1px solid transparent; user-select: none;">
+                <span id="modalDateText">Thứ hai, 12 tháng 10, 2026</span>
+            </div>
+
+            <div style="background: #f1f3f4; border-radius: 4px; padding: 3px 8px; display: inline-flex; align-items: center;">
+                <input type="text" id="modalTimeInput" value="09:00" style="width: 52px; background: transparent; border: none; outline: none; font-weight: 600; font-size: 13px; text-align: center; color: #1f1f1f;" list="modalTimeList">
+                <datalist id="modalTimeList">
+                    <option value="08:00">
+                    <option value="09:00">
+                    <option value="10:00">
+                    <option value="11:30">
+                    <option value="14:00">
+                    <option value="15:00">
+                    <option value="17:00">
+                    <option value="20:00">
+                    <option value="23:59">
+                </datalist>
+            </div>
+
+            <!-- POPUP LỊCH MINI -->
+            <div id="modalCalendarPopup" style="display: none; position: absolute; left: 32px; top: 38px; background: #ffffff; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.22); border: 1px solid #dadce0; padding: 12px; z-index: 100000; width: 260px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <span id="miniCalTitle" style="font-weight: 600; font-size: 13px; color: #1f1f1f;">Tháng 10, 2026</span>
+                    <div style="display: flex; gap: 8px;">
+                        <button type="button" onclick="prevMiniCalMonth(event)" style="background: none; border: none; cursor: pointer; color: #5f6368; padding: 2px 6px; font-size: 14px;"><i class="fa fa-angle-left"></i></button>
+                        <button type="button" onclick="nextMiniCalMonth(event)" style="background: none; border: none; cursor: pointer; color: #5f6368; padding: 2px 6px; font-size: 14px;"><i class="fa fa-angle-right"></i></button>
+                    </div>
+                </div>
+                <div id="miniCalGrid"></div>
+            </div>
+        </div>
+
+        <!-- HÀNG NÚT DƯỚI CÙNG: HỦY VÀ LƯU / CẬP NHẬT -->
+        <div style="display: flex; justify-content: flex-end; align-items: center; gap: 10px;">
+            <button type="button" onclick="closeCreateDeadlineModal()" style="background: none; border: none; padding: 7px 16px; font-size: 13px; font-weight: 600; color: #1a73e8; cursor: pointer; border-radius: 4px;">
+                Hủy
+            </button>
+            <button type="button" id="btnModalSave" onclick="saveNewDeadlineFromModal()" style="background: #1a73e8; border: none; padding: 7px 22px; font-size: 13px; font-weight: 600; color: #ffffff; border-radius: 4px; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">
+                Lưu
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- POPOVER CHI TIẾT DEADLINE HIỂN THỊ BÊN CẠNH THẺ DEADLINE (KHÔNG CÓ MÀN ĐEN OVERLAY) -->
+<div id="deadlineDetailPopover" class="deadline-detail-popover" style="display: none;">
+    <!-- THANH CÔNG CỤ: BÚT CHÌ (MỞ CỬA SỔ), THÙNG RÁC, 3 CHẤM, NÚT ĐÓNG -->
+    <div style="display: flex; justify-content: flex-end; align-items: center; gap: 4px; margin-bottom: 10px;">
+        <button type="button" class="btn-detail-icon" onclick="openEditDeadlineModal(currentDetailId)" title="Chỉnh sửa deadline (Mở cửa sổ)">
+            <i class="fa fa-pencil"></i>
+        </button>
+        <button type="button" class="btn-detail-icon" onclick="deleteDeadlineFromDetail(currentDetailId)" title="Xóa deadline">
+            <i class="fa fa-trash-o"></i>
+        </button>
+        <div style="position: relative; display: inline-block;">
+            <button type="button" class="btn-detail-icon" id="btnDetailMore" onclick="toggleDetailMoreMenu(event)" title="Tùy chọn khác">
+                <i class="fa fa-ellipsis-v"></i>
+            </button>
+            <div id="detailMoreMenu" style="display: none; position: absolute; right: 0; top: 38px; background: #ffffff; min-width: 175px; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.18); border: 1px solid #dadce0; z-index: 100000; padding: 4px 0;">
+                <a href="javascript:void(0);" class="detail-more-item" onclick="printDeadlineDetail(currentDetailId)">
+                    <i class="fa fa-print" style="width: 18px; color: #5f6368;"></i> In
+                </a>
+                <a href="javascript:void(0);" class="detail-more-item" onclick="copyDeadlineWithPrompt(currentDetailId)">
+                    <i class="fa fa-clone" style="width: 18px; color: #5f6368;"></i> Sao chép thông tin
+                </a>
+            </div>
+        </div>
+        <button type="button" class="btn-detail-icon" onclick="closeDeadlineDetailModal()" title="Đóng">
+            <i class="fa fa-times" style="font-size: 18px;"></i>
+        </button>
+    </div>
+
+    <!-- BANNER TRẠNG THÁI ĐỒNG BỘ (OPTIMISTIC UI: ĐANG LƯU HOẶC LỖI) -->
+    <div id="detailSyncBanner" style="display: none; margin-bottom: 10px; border-radius: 6px; padding: 6px 10px; font-size: 12px;"></div>
+
+    <!-- THÂN POPOVER: KHỐI VUÔNG MÀU + TIÊU ĐỀ + THỜI GIAN -->
+    <div style="display: flex; gap: 14px; align-items: flex-start; margin-bottom: 12px; padding: 0 2px;">
+        <div id="detailColorBox" style="width: 16px; height: 16px; border-radius: 4px; margin-top: 5px; flex-shrink: 0; background: #1a73e8; border: 1px solid #1a73e8;"></div>
+        <div style="flex: 1;">
+            <div id="detailTitleText" style="font-size: 18px; font-weight: 600; color: #1f1f1f; line-height: 1.35; word-break: break-word;">
+                Tiêu đề deadline
+            </div>
+            <div style="font-size: 13px; color: #444746; margin-top: 6px; line-height: 1.4; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;">
+                <span id="detailTimeFullText">Thứ hai, 5 tháng 10, 2026 · 09:00</span>
+                <span id="detailTimeBadge" style="background: rgba(0,0,0,0.06); border-radius: 4px; padding: 1px 7px; font-size: 11px; font-weight: 700;">Còn 1 ngày</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- PHÂN LOẠI: CÁ NHÂN / CẢ NHÓM -->
+    <div style="display: flex; align-items: center; gap: 14px; padding: 4px 2px 4px 32px;">
+        <i id="detailCategoryIcon" class="fa fa-user" style="font-size: 15px; color: #5f6368; width: 16px; text-align: center;"></i>
+        <span id="detailCategoryText" style="font-size: 13px; color: #444746; font-weight: 500;">Cá nhân</span>
+    </div>
+</div>
+
+<!-- SCRIPTS DÙNG CHUNG VÀ SCRIPT RIÊNG CỦA MODULE DEADLINE -->
+<script type="text/javascript" src="../../shared/js/jquery-3.4.1.min.js"></script>
+<script type="text/javascript" src="../../shared/js/kendo.all.min.js"></script>
+<script type="text/javascript" src="../../shared/js/kendo.culture.vi-VN.min.js"></script>
+<script type="text/javascript" src="../../shared/js/toastr.min.js"></script>
+<script type="text/javascript" src="../../shared/js/bootstrap.bundle.min.js"></script>
+<script type="text/javascript" src="../../shared/js/main.js"></script>
+<script type="text/javascript" src="./deadline.js"></script>
+
+</body>
+</html>
