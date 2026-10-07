@@ -25,6 +25,11 @@ module.exports = async (req, res) => {
         'Content-Type': 'application/json'
     };
 
+function sanitizeDueDate(val) {
+    if (!val) return val;
+    return String(val).replace(/(\+00:00|Z)$/, '');
+}
+
     // Lấy query ID và keyword k từ request
     const { id, k } = req.query || {};
 
@@ -44,7 +49,7 @@ module.exports = async (req, res) => {
                     data: {
                         id: item.id,
                         title: item.title,
-                        dueDate: item.due_date,
+                        dueDate: sanitizeDueDate(item.due_date),
                         session: item.session,
                         category: item.category_id,
                         isCompleted: item.is_completed ? 1 : 0
@@ -61,7 +66,7 @@ module.exports = async (req, res) => {
                 const formatted = list.map(item => ({
                     id: item.id,
                     title: item.title,
-                    dueDate: item.due_date,
+                    dueDate: sanitizeDueDate(item.due_date),
                     session: item.session,
                     category: item.category_id,
                     isCompleted: item.is_completed ? 1 : 0
@@ -94,7 +99,7 @@ module.exports = async (req, res) => {
                 data: {
                     id: created.id,
                     title: created.title,
-                    dueDate: created.due_date,
+                    dueDate: sanitizeDueDate(created.due_date),
                     session: created.session,
                     category: created.category_id,
                     isCompleted: created.is_completed ? 1 : 0
@@ -127,7 +132,7 @@ module.exports = async (req, res) => {
                 data: {
                     id: updated.id,
                     title: updated.title,
-                    dueDate: updated.due_date,
+                    dueDate: sanitizeDueDate(updated.due_date),
                     session: updated.session,
                     category: updated.category_id,
                     isCompleted: updated.is_completed ? 1 : 0

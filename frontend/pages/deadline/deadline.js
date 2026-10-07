@@ -8,6 +8,27 @@ let todayDate = new Date();    // Mốc thời gian thực để tính toán mà
 let currentViewMode = 'week';  // 'week' | 'month'
 let currentDeadlines = [];     // Danh sách deadline gộp từ 2 phân khu
 
+/**
+ * Chuyển đổi chuỗi ngày hạn chót sang đối tượng Date chuẩn theo giờ địa phương (Wall-clock time)
+ * Tuyệt đối không bị lệch múi giờ (+00:00, Z, hoặc UTC sang GMT+7)
+ */
+function parseDeadlineDate(dateStr) {
+    if (!dateStr) return new Date();
+    if (dateStr instanceof Date) return dateStr;
+    const m = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/);
+    if (m) {
+        return new Date(
+            parseInt(m[1], 10),
+            parseInt(m[2], 10) - 1,
+            parseInt(m[3], 10),
+            parseInt(m[4], 10),
+            parseInt(m[5], 10),
+            m[6] ? parseInt(m[6], 10) : 0
+        );
+    }
+    return new Date(dateStr);
+}
+
 // ==========================================
 // 1. LOCAL CACHE 2 PHÂN KHU (STAGING BUFFER & OPTIMISTIC UI)
 // ==========================================
@@ -71,7 +92,7 @@ function computeEffectiveDeadlines() {
     });
 
     const result = Array.from(map.values());
-    result.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+    result.sort((a, b) => parseDeadlineDate(a.dueDate) - parseDeadlineDate(b.dueDate));
     return result;
 }
 
@@ -317,7 +338,7 @@ function discardPendingItem(id) {
 // ==========================================
 function calculateDaysLeft(dueDateStr, baseDate) {
     if (!dueDateStr) return 0;
-    const due = new Date(dueDateStr);
+    const due = parseDeadlineDate(dueDateStr);
     const base = new Date(baseDate);
     due.setHours(0, 0, 0, 0);
     base.setHours(0, 0, 0, 0);
@@ -381,7 +402,7 @@ function renderWeekSchedule(items, mondayDate, filterType = "0", todayDate = new
         if (filterType === "group" && item.category !== "group") return;
         if (filterType === "personal" && item.category !== "personal") return;
 
-        const itemDate = new Date(item.dueDate);
+        const itemDate = parseDeadlineDate(item.dueDate);
         itemDate.setHours(0, 0, 0, 0);
 
         let matchedDayIndex = -1;
@@ -401,7 +422,7 @@ function renderWeekSchedule(items, mondayDate, filterType = "0", todayDate = new
         const daysLeft = calculateDaysLeft(item.dueDate, todayDate);
         const styleInfo = getDeadlineColorStyle(daysLeft, item.isCompleted);
 
-        const dueObj = new Date(item.dueDate);
+        const dueObj = parseDeadlineDate(item.dueDate);
         const timeOnly = `${String(dueObj.getHours()).padStart(2,'0')}:${String(dueObj.getMinutes()).padStart(2,'0')}`;
         const fullTimeStr = `${timeOnly} - ${String(dueObj.getDate()).padStart(2,'0')}/${String(dueObj.getMonth()+1).padStart(2,'0')}/${dueObj.getFullYear()}`;
 
@@ -477,7 +498,7 @@ function renderMonthSchedule(items, year, month, filterType = "0", todayDate = n
                 if (filterType === "group" && item.category !== "group") return;
                 if (filterType === "personal" && item.category !== "personal") return;
 
-                const itemD = new Date(item.dueDate);
+                const itemD = parseDeadlineDate(item.dueDate);
                 if (itemD.getFullYear() === currentGridDate.getFullYear() &&
                     itemD.getMonth() === currentGridDate.getMonth() &&
                     itemD.getDate() === currentGridDate.getDate()) {
@@ -490,7 +511,7 @@ function renderMonthSchedule(items, year, month, filterType = "0", todayDate = n
         matchedDeadlines.forEach(dl => {
             const daysLeft = calculateDaysLeft(dl.dueDate, todayDate);
             const styleInfo = getDeadlineColorStyle(daysLeft, dl.isCompleted);
-            const dueObj = new Date(dl.dueDate);
+            const dueObj = parseDeadlineDate(dl.dueDate);
             const timeOnly = `${String(dueObj.getHours()).padStart(2,'0')}:${String(dueObj.getMinutes()).padStart(2,'0')}`;
 
             let mSync = '';
@@ -630,7 +651,7 @@ function showDeadlineDetail(id, event, element) {
     });
     $('#detailTitleText').text(item.title);
 
-    const dueObj = new Date(item.dueDate);
+    const dueObj = parseDeadlineDate(item.dueDate);
     const dateStrVi = formatVietnameseDate(dueObj);
     const hh = String(dueObj.getHours()).padStart(2, '0');
     const mm = String(dueObj.getMinutes()).padStart(2, '0');
@@ -755,7 +776,7 @@ function copyDeadlineWithPrompt(id) {
     else if (daysLeft === 0) remainingStr = 'Hôm nay';
     else remainingStr = `Còn ${daysLeft} ngày`;
 
-    const dueObj = new Date(item.dueDate);
+    const dueObj = parseDeadlineDate(item.dueDate);
     const dateFormatted = `${String(dueObj.getDate()).padStart(2,'0')}/${String(dueObj.getMonth()+1).padStart(2,'0')}/${dueObj.getFullYear()}`;
     const timeFormatted = `${String(dueObj.getHours()).padStart(2,'0')}:${String(dueObj.getMinutes()).padStart(2,'0')}`;
     const categoryName = item.category === 'group' ? 'Cả nhóm' : 'Cá nhân';
@@ -813,7 +834,7 @@ function printDeadlineDetail(id) {
 
     $('#detailMoreMenu').hide();
 
-    const dueObj = new Date(item.dueDate);
+    const dueObj = parseDeadlineDate(item.dueDate);
     const dateFormatted = `${String(dueObj.getDate()).padStart(2,'0')}/${String(dueObj.getMonth()+1).padStart(2,'0')}/${dueObj.getFullYear()}`;
     const timeFormatted = `${String(dueObj.getHours()).padStart(2,'0')}:${String(dueObj.getMinutes()).padStart(2,'0')}`;
     const categoryName = item.category === 'group' ? 'Cả nhóm' : 'Cá nhân';
@@ -897,7 +918,7 @@ function openEditDeadlineModal(id) {
     setModalCategory(item.category || 'personal');
     $('#modalInputTitle').val(item.title);
 
-    selectedModalDate = new Date(item.dueDate);
+    selectedModalDate = parseDeadlineDate(item.dueDate);
     miniCalYear = selectedModalDate.getFullYear();
     miniCalMonth = selectedModalDate.getMonth();
 
@@ -1062,7 +1083,7 @@ async function saveNewDeadlineFromModal() {
     const dueDateStr = `${y}-${m}-${d}T${hh}:${mm}:00`;
 
     // KIỂM TRA THỜI GIAN: KHÔNG ĐƯỢC CHỌN THỜI ĐIỂM TRONG QUÁ KHỨ
-    const dueDateTime = new Date(dueDateStr);
+    const dueDateTime = parseDeadlineDate(dueDateStr);
     const now = new Date();
     if (dueDateTime < now) {
         const errorMsg = "Thời hạn nộp không thể ở trong quá khứ! Vui lòng chọn thời điểm từ hiện tại trở đi.";
