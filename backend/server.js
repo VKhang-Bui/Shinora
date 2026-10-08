@@ -2,6 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const deadlineController = require('./controllers/deadlineController');
+const userController = require('./controllers/userController');
 
 const PORT = process.env.PORT || 3000;
 const FRONTEND_DIR = path.join(__dirname, '..', 'frontend');
@@ -61,7 +62,29 @@ const server = http.createServer(async (req, res) => {
     const pathname = parsedUrl.pathname;
 
     // ==========================================
-    // 1. RESTFUL API ENDPOINTS CHO DEADLINES
+    // 1. RESTFUL API ENDPOINTS CHO AUTH & USERS
+    // ==========================================
+    if (pathname === '/api/auth/login' && req.method === 'POST') {
+        try {
+            const body = await parseJsonBody(req);
+            const user = userController.login(body);
+            return sendJson(res, 200, { success: true, user });
+        } catch (err) {
+            return sendJson(res, 400, { success: false, message: err.message });
+        }
+    }
+
+    if (pathname === '/api/users' && req.method === 'GET') {
+        try {
+            const users = userController.getAll();
+            return sendJson(res, 200, { success: true, data: users });
+        } catch (err) {
+            return sendJson(res, 500, { success: false, message: err.message });
+        }
+    }
+
+    // ==========================================
+    // 2. RESTFUL API ENDPOINTS CHO DEADLINES
     // ==========================================
     if (pathname.startsWith('/api/deadlines')) {
         const idMatch = pathname.match(/^\/api\/deadlines\/([^\/]+)$/);
@@ -71,7 +94,8 @@ const server = http.createServer(async (req, res) => {
             // GET /api/deadlines
             if (req.method === 'GET' && !deadlineId) {
                 const keyword = parsedUrl.searchParams.get('k') || '';
-                const list = deadlineController.getAll(keyword);
+                const userId = parsedUrl.searchParams.get('userId') || '';
+                const list = deadlineController.getAll(keyword, userId);
                 return sendJson(res, 200, { success: true, data: list });
             }
 
@@ -117,27 +141,35 @@ const server = http.createServer(async (req, res) => {
     // ==========================================
     // 2. STATIC FILES SERVER CHO FRONTEND
     // ==========================================
+    let cleanPath = pathname;
+    if (cleanPath.startsWith('/frontend/')) {
+        cleanPath = cleanPath.substring('/frontend'.length);
+    }
+
     let filePath = '';
-    if (pathname === '/' || pathname === '/deadline' || pathname === '/deadline/') {
+    if (cleanPath === '/' || cleanPath === '/deadline' || cleanPath === '/deadline/' || cleanPath === '/pages/deadline' || cleanPath === '/pages/deadline/' || cleanPath === '/pages/deadline/index.html') {
         filePath = path.join(FRONTEND_DIR, 'pages', 'deadline', 'index.html');
-    } else if (pathname === '/deadline.js' || pathname === '/deadline/deadline.js') {
+    } else if (cleanPath === '/deadline.js' || cleanPath === '/deadline/deadline.js' || cleanPath === '/pages/deadline/deadline.js') {
         filePath = path.join(FRONTEND_DIR, 'pages', 'deadline', 'deadline.js');
-    } else if (pathname === '/deadline.css' || pathname === '/deadline/deadline.css') {
+    } else if (cleanPath === '/deadline.css' || cleanPath === '/deadline/deadline.css' || cleanPath === '/pages/deadline/deadline.css') {
         filePath = path.join(FRONTEND_DIR, 'pages', 'deadline', 'deadline.css');
-    } else if (pathname.startsWith('/shared/')) {
-        filePath = path.join(FRONTEND_DIR, pathname);
-    } else if (pathname.startsWith('/pages/')) {
-        filePath = path.join(FRONTEND_DIR, pathname);
+    } else if (cleanPath.startsWith('/shared/')) {
+        filePath = path.join(FRONTEND_DIR, cleanPath);
+    } else if (cleanPath.startsWith('/pages/')) {
+        filePath = path.join(FRONTEND_DIR, cleanPath);
     } else {
-        // Thử tìm trong frontend/shared hoặc frontend/pages/deadline
-        const tryShared = path.join(FRONTEND_DIR, 'shared', pathname);
-        const tryDeadline = path.join(FRONTEND_DIR, 'pages', 'deadline', pathname);
+        // Thử tìm trong frontend/shared, frontend/pages/deadline hoặc trực tiếp
+        const tryShared = path.join(FRONTEND_DIR, 'shared', cleanPath);
+        const tryDeadline = path.join(FRONTEND_DIR, 'pages', 'deadline', cleanPath);
+        const tryDirect = path.join(FRONTEND_DIR, cleanPath);
         if (fs.existsSync(tryShared) && fs.statSync(tryShared).isFile()) {
             filePath = tryShared;
         } else if (fs.existsSync(tryDeadline) && fs.statSync(tryDeadline).isFile()) {
             filePath = tryDeadline;
+        } else if (fs.existsSync(tryDirect) && fs.statSync(tryDirect).isFile()) {
+            filePath = tryDirect;
         } else {
-            filePath = path.join(FRONTEND_DIR, pathname);
+            filePath = tryDirect;
         }
     }
 

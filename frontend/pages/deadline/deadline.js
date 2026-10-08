@@ -3,6 +3,8 @@
  * Tối ưu hóa 2 tầng: HTTP Cache + Optimistic UI 2 Phân khu Local Cache
  */
 
+const APP_VERSION = '1.0.1';
+
 let currentDate = new Date(); // Mặc định thời điểm hôm nay thực tế của máy người dùng
 let todayDate = new Date();    // Mốc thời gian thực để tính toán màu sắc và độ gấp
 let currentViewMode = 'week';  // 'week' | 'month'
@@ -30,15 +32,222 @@ function parseDeadlineDate(dateStr) {
 }
 
 // ==========================================
-// 1. LOCAL CACHE 2 PHÂN KHU (STAGING BUFFER & OPTIMISTIC UI)
+// 1. QUẢN LÝ ĐĂNG NHẬP / PHIÊN THÀNH VIÊN & LOCAL CACHE THEO NGƯỜI DÙNG
 // ==========================================
-const CACHE_CONFIRMED_KEY = 'deadlines_synced_v1'; // KHU A: Không biến động (Đã ghi vào SQL)
-const CACHE_PENDING_KEY = 'deadlines_pending_v1';   // KHU B: Biến động (Đang chờ đồng bộ / Lỗi)
+const DEADLINE_AUTH_USER_KEY = 'deadline_user_session_v1';
+const CACHE_GUEST_KEY = 'deadlines_guest_v1';
 const API_URL = '/api/deadlines';
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/[&<>"']/g, function (m) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
+    });
+}
+
+function getAuthUser() {
+    try {
+        const raw = localStorage.getItem(DEADLINE_AUTH_USER_KEY);
+        return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function setAuthUser(user) {
+    try {
+        if (user) {
+            localStorage.setItem(DEADLINE_AUTH_USER_KEY, JSON.stringify(user));
+        } else {
+            localStorage.removeItem(DEADLINE_AUTH_USER_KEY);
+        }
+    } catch (e) {
+        console.error('[Set Auth Error]:', e);
+    }
+    updateAuthHeaderUI();
+}
+
+function updateAuthHeaderUI() {
+    closeUserDropdown();
+    const user = getAuthUser();
+    if (user) {
+        $('#authGuestView').hide();
+        $('#authUserView').css('display', 'flex');
+        const initial = (user.name || 'K').trim().charAt(0).toUpperCase();
+        $('#headerUserAvatar').text(initial);
+        $('#headerUserName').text(user.name);
+    } else {
+        $('#authUserView').hide();
+        $('#authGuestView').css('display', 'flex');
+    }
+}
+
+function toggleUserDropdown(event) {
+    if (event) {
+        event.stopPropagation();
+    }
+    const dropdown = $('#userProfileDropdown');
+    dropdown.stop(true, true).slideToggle(160);
+}
+window.toggleUserDropdown = toggleUserDropdown;
+
+function closeUserDropdown() {
+    $('#userProfileDropdown').stop(true, true).slideUp(120);
+}
+window.closeUserDropdown = closeUserDropdown;
+
+$(document).on('click', function(e) {
+    if (!$(e.target).closest('#authUserView').length) {
+        closeUserDropdown();
+    }
+});
+
+
+function openLoginModal() {
+    $('#loginModalOverlay').css('display', 'flex');
+    $('#loginInputPass').val('');
+    setTimeout(() => { $('#loginInputName').focus(); }, 100);
+}
+
+function closeLoginModal() {
+    $('#loginModalOverlay').hide();
+    $('#loginInputPass').val('');
+}
+
+async function handleLoginSubmit(event) {
+    if (event) event.preventDefault();
+    const name = $('#loginInputName').val().trim();
+    const password = $('#loginInputPass').val().trim();
+    if (!name) {
+        if (typeof toastr !== 'undefined') toastr.warning('Vui lòng nhập họ và tên!');
+        $('#loginInputName').focus();
+        return;
+    }
+    if (!password) {
+        if (typeof toastr !== 'undefined') toastr.warning('Vui lòng nhập mật khẩu!');
+        $('#loginInputPass').focus();
+        return;
+    }
+    try {
+        const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, password })
+        });
+        const result = await res.json();
+        if (result.success && result.user) {
+            setAuthUser(result.user);
+            closeLoginModal();
+            if (typeof toastr !== 'undefined') toastr.success(`Xin chào ${result.user.name}! Đã kết nối đồng bộ.`);
+            await loadRegisteredUsers();
+            await fetchDeadlinesFromDb();
+        } else {
+            if (typeof toastr !== 'undefined') toastr.error(result.message || 'Đăng nhập không thành công');
+            else alert(result.message || 'Đăng nhập không thành công');
+        }
+    } catch (e) {
+        console.error('Login error:', e);
+        if (typeof toastr !== 'undefined') toastr.error('Lỗi kết nối máy chủ!');
+    }
+}
+
+function logoutUser() {
+    closeUserDropdown();
+    setAuthUser(null);
+    if (typeof toastr !== 'undefined') toastr.info('Đã đăng xuất. Bạn đang ở chế độ Khách (chỉ lưu trên máy này).');
+    fetchDeadlinesFromDb();
+}
+
+// Lấy danh sách thành viên nhóm cho checklist phân công
+let cachedRegisteredUsers = [];
+async function loadRegisteredUsers() {
+    try {
+        const res = await fetch('/api/users');
+        const result = await res.json();
+        if (result.success && Array.isArray(result.data)) {
+            cachedRegisteredUsers = result.data;
+            renderAssigneesList();
+        }
+    } catch (e) {
+        console.warn('Lỗi lấy danh sách thành viên:', e);
+    }
+}
+
+function renderAssigneesList(selectedIds = null) {
+    const container = $('#assigneesList');
+    if (!container.length) return;
+    const currentUser = getAuthUser();
+
+    let list = [...cachedRegisteredUsers];
+    if (currentUser && !list.some(u => u.id === currentUser.id)) {
+        list.push({ id: currentUser.id, name: currentUser.name });
+    }
+
+    if (list.length === 0) {
+        container.html('<span style="font-size: 11px; color: #70757a;">Chưa có thành viên nào khác. Bạn có thể nhập thêm bên dưới.</span>');
+        return;
+    }
+
+    let html = '';
+    list.forEach(u => {
+        const isChecked = selectedIds ? (selectedIds.includes(u.id) || selectedIds.includes(u.name)) : true;
+        html += `
+            <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; background: white; border: 1px solid #dadce0; border-radius: 4px; padding: 2px 8px; cursor: pointer; user-select: none; margin: 0;">
+                <input type="checkbox" class="assignee-item" value="${escapeHtml(u.id)}" data-name="${escapeHtml(u.name)}" ${isChecked ? 'checked' : ''} style="margin: 0; vertical-align: middle;">
+                <span>${escapeHtml(u.name)}</span>
+            </label>
+        `;
+    });
+    container.html(html);
+}
+
+function toggleAssignAll(isChecked) {
+    if (isChecked) {
+        $('#assigneesContainer').hide();
+        $('.assignee-item').prop('checked', true);
+    } else {
+        $('#assigneesContainer').show();
+        loadRegisteredUsers();
+    }
+}
+
+async function addNewMemberFromModal() {
+    const input = $('#inputNewMemberName');
+    const name = input.val().trim();
+    if (!name) return;
+    try {
+        const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, password: '123456789' })
+        });
+        const result = await res.json();
+        if (result.success && result.user) {
+            input.val('');
+            await loadRegisteredUsers();
+            if (typeof toastr !== 'undefined') toastr.success(`Đã thêm thành viên "${result.user.name}"`);
+        }
+    } catch (e) {
+        console.error('Add member error:', e);
+    }
+}
+
+// ------------------------------------------
+// 2. KHU VỰC CACHE 2 PHÂN KHU TÙY THEO USER HOẶC KHÁCH
+// ------------------------------------------
+function getConfirmedCacheKey() {
+    const user = getAuthUser();
+    return user ? `deadlines_synced_${user.id}_v1` : CACHE_GUEST_KEY;
+}
+
+function getPendingCacheKey() {
+    const user = getAuthUser();
+    return user ? `deadlines_pending_${user.id}_v1` : 'deadlines_pending_guest_v1';
+}
 
 function getConfirmedCache() {
     try {
-        const raw = localStorage.getItem(CACHE_CONFIRMED_KEY);
+        const raw = localStorage.getItem(getConfirmedCacheKey());
         return raw ? JSON.parse(raw) : [];
     } catch (e) {
         return [];
@@ -47,15 +256,17 @@ function getConfirmedCache() {
 
 function setConfirmedCache(list) {
     try {
-        localStorage.setItem(CACHE_CONFIRMED_KEY, JSON.stringify(list || []));
+        localStorage.setItem(getConfirmedCacheKey(), JSON.stringify(list || []));
     } catch (e) {
         console.error('[Cache Save Confirmed Error]:', e);
     }
 }
 
 function getPendingCache() {
+    const user = getAuthUser();
+    if (!user) return [];
     try {
-        const raw = localStorage.getItem(CACHE_PENDING_KEY);
+        const raw = localStorage.getItem(getPendingCacheKey());
         return raw ? JSON.parse(raw) : [];
     } catch (e) {
         return [];
@@ -63,21 +274,69 @@ function getPendingCache() {
 }
 
 function setPendingCache(list) {
+    const user = getAuthUser();
+    if (!user) return;
     try {
-        localStorage.setItem(CACHE_PENDING_KEY, JSON.stringify(list || []));
+        localStorage.setItem(getPendingCacheKey(), JSON.stringify(list || []));
     } catch (e) {
         console.error('[Cache Save Pending Error]:', e);
     }
 }
 
+function isDeadlineVisibleForUser(item, user) {
+    if (!item) return false;
+    // Chế độ Khách (Guest)
+    if (!user) {
+        return true;
+    }
+
+    const myId = (user.id || '').toLowerCase();
+    const itemUserId = (item.userId || '').toLowerCase();
+
+    // 1. Người tạo: Luôn thấy (cả cá nhân và nhóm)
+    if (itemUserId && itemUserId === myId) {
+        return true;
+    }
+
+    // 2. Deadline cá nhân của người khác: TUYỆT ĐỐI KHÔNG THẤY
+    if (item.category === 'personal') {
+        return false;
+    }
+
+    // 3. Deadline nhóm (group)
+    if (item.category === 'group') {
+        if (!item.assignees || item.assignees === 'all' || item.assignees === '["all"]') {
+            return true;
+        }
+        let parsed = [];
+        try {
+            parsed = typeof item.assignees === 'string' ? JSON.parse(item.assignees) : item.assignees;
+        } catch (e) {
+            parsed = [String(item.assignees)];
+        }
+        if (!Array.isArray(parsed)) parsed = [parsed];
+        if (parsed.includes('all')) return true;
+
+        const myName = (user.name || '').toLowerCase();
+        return parsed.some(asg => {
+            if (!asg) return false;
+            const asgStr = String(asg).toLowerCase();
+            return asgStr === myId || asgStr === myName;
+        });
+    }
+
+    return true;
+}
+
 // Gộp 2 phân khu (Khu A + Khu B) để vẽ lên màn hình tức thì
 function computeEffectiveDeadlines() {
+    const user = getAuthUser();
     const confirmed = getConfirmedCache();
     const pending = getPendingCache();
 
     const map = new Map();
     confirmed.forEach(item => {
-        map.set(item.id, { ...item, _syncStatus: 'synced' });
+        map.set(item.id, { ...item, _syncStatus: user ? 'synced' : 'guest' });
     });
 
     pending.forEach(pItem => {
@@ -91,14 +350,16 @@ function computeEffectiveDeadlines() {
         }
     });
 
-    const result = Array.from(map.values());
+    const result = Array.from(map.values()).filter(item => isDeadlineVisibleForUser(item, user));
     result.sort((a, b) => parseDeadlineDate(a.dueDate) - parseDeadlineDate(b.dueDate));
     return result;
 }
 
-// Tải dữ liệu ban đầu: Hiển thị ngay từ Cache (0ms), sau đó Revalidate ngầm với Server
+// Tải dữ liệu ban đầu
 async function fetchDeadlinesFromDb(keyword = '') {
-    // 1. Tức thì: Nạp ngay từ Local Cache (Khu A + Khu B)
+    const user = getAuthUser();
+
+    // 1. Tức thì: Nạp ngay từ Local Cache (0ms)
     currentDeadlines = computeEffectiveDeadlines();
     if (keyword && keyword.trim()) {
         const kw = keyword.trim().toLowerCase();
@@ -106,16 +367,23 @@ async function fetchDeadlinesFromDb(keyword = '') {
     }
     renderCurrentView();
 
-    // 2. Chạy ngầm: Gửi request lên server để so sánh và cập nhật mới nhất
+    // Nếu là Khách: Tuyệt đối không gửi lên server CSDL
+    if (!user) {
+        return;
+    }
+
+    // 2. Chạy ngầm: Gửi request lên server để so sánh và cập nhật mới nhất cho thành viên
     try {
-        const url = keyword ? `${API_URL}?k=${encodeURIComponent(keyword)}` : API_URL;
+        let url = `${API_URL}?userId=${encodeURIComponent(user.id)}`;
+        if (keyword && keyword.trim()) {
+            url += `&k=${encodeURIComponent(keyword.trim())}`;
+        }
         const res = await fetch(url);
         const result = await res.json();
         if (result.success && Array.isArray(result.data)) {
-            // Cập nhật Khu A (Không biến động)
             setConfirmedCache(result.data);
 
-            // Dọn dẹp Khu B: Các bản ghi create/update/delete đã được server xác nhận
+            // Dọn dẹp Khu B
             const serverIdSet = new Set(result.data.map(d => d.id));
             const currentPending = getPendingCache().filter(p => {
                 if (p._syncOp === 'create' && serverIdSet.has(p.id)) return false;
@@ -124,7 +392,6 @@ async function fetchDeadlinesFromDb(keyword = '') {
             });
             setPendingCache(currentPending);
 
-            // Cập nhật lại danh sách và vẽ lại mượt mà
             currentDeadlines = computeEffectiveDeadlines();
             if (keyword && keyword.trim()) {
                 const kw = keyword.trim().toLowerCase();
@@ -139,20 +406,44 @@ async function fetchDeadlinesFromDb(keyword = '') {
 
 // OPTIMISTIC CREATE: Lưu vào Khu B -> Hiện ngay lập tức -> Gửi ngầm server -> Chuyển sang Khu A
 async function optimisticCreateDeadline(dlData) {
+    const user = getAuthUser();
     const tempId = dlData.id || ('dl-' + Date.now());
-    const pendingItem = {
+    const enrichedData = {
         ...dlData,
         id: tempId,
-        _syncOp: 'create',
-        _syncStatus: 'pending' // 'pending' | 'error' | 'synced'
+        userId: user ? user.id : null,
+        userName: user ? user.name : 'Khách',
+        assignees: dlData.assignees || 'all'
     };
 
-    // 1. Ghi ngay vào KHU B
+    // 1. NẾU LÀ KHÁCH: LƯU TRỰC TIẾP VÀO LOCAL CACHE KHÁCH (KHÔNG GỬI SERVER)
+    if (!user) {
+        const confirmed = getConfirmedCache();
+        confirmed.push({
+            ...enrichedData,
+            _syncStatus: 'guest'
+        });
+        setConfirmedCache(confirmed);
+
+        currentDeadlines = computeEffectiveDeadlines();
+        renderCurrentView();
+        if (typeof toastr !== 'undefined') {
+            toastr.success(`Đã lưu "${dlData.title}" vào máy (Chế độ Khách).`);
+        }
+        return enrichedData;
+    }
+
+    // 2. NẾU ĐÃ ĐĂNG NHẬP: GHI KHU B -> RENDER NGAY -> GỬI SERVER SQL -> CHUYỂN KHU A
+    const pendingItem = {
+        ...enrichedData,
+        _syncOp: 'create',
+        _syncStatus: 'pending'
+    };
+
     const pendingList = getPendingCache();
     pendingList.push(pendingItem);
     setPendingCache(pendingList);
 
-    // 2. Render ngay tức thì (0.01s)
     currentDeadlines = computeEffectiveDeadlines();
     renderCurrentView();
 
@@ -160,7 +451,6 @@ async function optimisticCreateDeadline(dlData) {
         toastr.info(`Đang lưu "${dlData.title}"...`, '', { timeOut: 1200 });
     }
 
-    // 3. Gửi ngầm xuống CSDL SQL
     try {
         const res = await fetch(API_URL, {
             method: 'POST',
@@ -170,12 +460,14 @@ async function optimisticCreateDeadline(dlData) {
                 title: dlData.title,
                 dueDate: dlData.dueDate,
                 session: dlData.session,
-                category: dlData.category
+                category: dlData.category,
+                userId: enrichedData.userId,
+                userName: enrichedData.userName,
+                assignees: enrichedData.assignees
             })
         });
         const result = await res.json();
         if (result.success && result.data) {
-            // THÀNH CÔNG: Chuyển từ Khu B sang Khu A
             setPendingCache(getPendingCache().filter(p => p.id !== tempId));
             const confirmed = getConfirmedCache().filter(c => c.id !== tempId);
             confirmed.push(result.data);
@@ -192,7 +484,6 @@ async function optimisticCreateDeadline(dlData) {
         }
     } catch (err) {
         console.error('[Optimistic Create Error]:', err);
-        // THẤT BẠI: Đánh dấu lỗi trong Khu B (Không xóa mất bài của user)
         const pending = getPendingCache();
         const item = pending.find(p => p.id === tempId);
         if (item) {
@@ -202,7 +493,7 @@ async function optimisticCreateDeadline(dlData) {
         currentDeadlines = computeEffectiveDeadlines();
         renderCurrentView();
         if (typeof toastr !== 'undefined') {
-            toastr.error(`Lỗi kết nối máy chủ! Dữ liệu được giữ an toàn trên máy bạn. Nhấp vào thẻ để thử lại.`);
+            toastr.error(`Lỗi kết nối máy chủ! Dữ liệu được giữ an toàn trên máy bạn.`);
         }
         return null;
     }
@@ -210,6 +501,23 @@ async function optimisticCreateDeadline(dlData) {
 
 // OPTIMISTIC UPDATE: Cập nhật ngay trong Khu B -> Hiện ngay lập tức -> Gửi ngầm server
 async function optimisticUpdateDeadline(id, dlData) {
+    const user = getAuthUser();
+
+    // 1. NẾU LÀ KHÁCH: CẬP NHẬT TRONG LOCAL CACHE KHÁCH
+    if (!user) {
+        const confirmed = getConfirmedCache();
+        const idx = confirmed.findIndex(c => c.id === id);
+        if (idx >= 0) {
+            confirmed[idx] = { ...confirmed[idx], ...dlData };
+            setConfirmedCache(confirmed);
+        }
+        currentDeadlines = computeEffectiveDeadlines();
+        renderCurrentView();
+        if (typeof toastr !== 'undefined') toastr.success(`Đã cập nhật deadline thành công!`);
+        return dlData;
+    }
+
+    // 2. NẾU ĐÃ ĐĂNG NHẬP: GỬI LÊN SERVER
     const pendingList = getPendingCache();
     const existingIdx = pendingList.findIndex(p => p.id === id);
     const pendingItem = {
@@ -222,7 +530,6 @@ async function optimisticUpdateDeadline(id, dlData) {
     else pendingList.push(pendingItem);
     setPendingCache(pendingList);
 
-    // Render ngay tức thì
     currentDeadlines = computeEffectiveDeadlines();
     renderCurrentView();
 
@@ -234,7 +541,6 @@ async function optimisticUpdateDeadline(id, dlData) {
         });
         const result = await res.json();
         if (result.success && result.data) {
-            // Chuyển sang Khu A
             setPendingCache(getPendingCache().filter(p => p.id !== id));
             const confirmed = getConfirmedCache().filter(c => c.id !== id);
             confirmed.push(result.data);
@@ -262,12 +568,22 @@ async function optimisticUpdateDeadline(id, dlData) {
     }
 }
 
-// OPTIMISTIC DELETE: Ẩn ngay lập tức -> Đưa vào Khu B chờ xóa ngầm -> Nếu lỗi thì khôi phục (Rollback)
+// OPTIMISTIC DELETE: Ẩn ngay lập tức -> Nếu khách xóa thẳng -> Nếu đăng nhập gửi server xóa
 async function optimisticDeleteDeadline(id) {
+    const user = getAuthUser();
     const itemToDelete = currentDeadlines.find(d => d.id === id);
     if (!itemToDelete) return false;
 
-    // Đưa vào Khu B với _syncOp: 'delete'
+    // 1. NẾU LÀ KHÁCH: XÓA THẲNG TRONG LOCAL CACHE KHÁCH
+    if (!user) {
+        setConfirmedCache(getConfirmedCache().filter(c => c.id !== id));
+        currentDeadlines = computeEffectiveDeadlines();
+        renderCurrentView();
+        if (typeof toastr !== 'undefined') toastr.success(`Đã xóa deadline thành công!`);
+        return true;
+    }
+
+    // 2. NẾU ĐÃ ĐĂNG NHẬP: ẨN NGAY -> GỬI XÓA SERVER
     const pendingList = getPendingCache().filter(p => p.id !== id);
     pendingList.push({
         id,
@@ -277,7 +593,6 @@ async function optimisticDeleteDeadline(id) {
     });
     setPendingCache(pendingList);
 
-    // Ẩn ngay khỏi màn hình (0ms)
     currentDeadlines = computeEffectiveDeadlines();
     renderCurrentView();
 
@@ -285,7 +600,6 @@ async function optimisticDeleteDeadline(id) {
         const res = await fetch(`${API_URL}/${encodeURIComponent(id)}`, { method: 'DELETE' });
         const result = await res.json();
         if (result.success) {
-            // Xóa dứt điểm khỏi cả 2 khu
             setPendingCache(getPendingCache().filter(p => p.id !== id));
             setConfirmedCache(getConfirmedCache().filter(c => c.id !== id));
             currentDeadlines = computeEffectiveDeadlines();
@@ -297,7 +611,6 @@ async function optimisticDeleteDeadline(id) {
         }
     } catch (err) {
         console.error('[Optimistic Delete Error]:', err);
-        // ROLLBACK: Khôi phục lại thẻ
         setPendingCache(getPendingCache().filter(p => p.id !== id));
         currentDeadlines = computeEffectiveDeadlines();
         renderCurrentView();
@@ -620,13 +933,6 @@ function formatVietnameseDate(d) {
     return `${dayNamesVi[d.getDay()]}, ${d.getDate()} tháng ${d.getMonth() + 1}, ${d.getFullYear()}`;
 }
 
-function escapeHtml(str) {
-    if (!str) return '';
-    return str.replace(/[&<>"']/g, function (m) {
-        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
-    });
-}
-
 // ==========================================
 // 4. POPOVER CHI TIẾT DEADLINE (HIỂN THỊ CẠNH THẺ, KHÔNG OVERLAY)
 // ==========================================
@@ -671,12 +977,42 @@ function showDeadlineDetail(id, event, element) {
         'background': 'rgba(255,255,255,0.85)'
     });
 
+    // Cập nhật người tạo
+    const currentUser = getAuthUser();
+    let creatorStr = 'Khách';
+    if (item.userName) {
+        creatorStr = (currentUser && item.userId === currentUser.id) ? 'Bạn' : item.userName;
+    } else if (currentUser && item.userId === currentUser.id) {
+        creatorStr = 'Bạn';
+    }
+    $('#detailCreatorText').text(`Tạo bởi: ${creatorStr}`);
+
     if (item.category === 'group') {
         $('#detailCategoryIcon').attr('class', 'fa fa-users').css('color', '#0f9d58');
         $('#detailCategoryText').text('Cả nhóm');
+        $('#detailAssigneesRow').show();
+
+        let assigneesStr = 'Toàn bộ nhóm';
+        if (item.assignees && item.assignees !== 'all' && item.assignees !== '["all"]') {
+            let parsed = [];
+            try {
+                parsed = typeof item.assignees === 'string' ? JSON.parse(item.assignees) : item.assignees;
+            } catch (e) {
+                parsed = [String(item.assignees)];
+            }
+            if (Array.isArray(parsed) && parsed.length > 0 && !parsed.includes('all')) {
+                const names = parsed.map(idOrName => {
+                    const found = cachedRegisteredUsers.find(u => u.id === idOrName);
+                    return found ? found.name : idOrName;
+                });
+                assigneesStr = names.join(', ');
+            }
+        }
+        $('#detailAssigneesText').text(`Phân công: ${assigneesStr}`);
     } else {
         $('#detailCategoryIcon').attr('class', 'fa fa-user').css('color', '#1a73e8');
         $('#detailCategoryText').text('Cá nhân');
+        $('#detailAssigneesRow').hide();
     }
 
     // HIỂN THỊ BANNER ĐỒNG BỘ TRÊN POPOVER (NẾU CÓ)
@@ -888,6 +1224,8 @@ function openCreateDeadlineModal(category) {
     $('#createDropdownMenu').hide();
     editingDeadlineId = null;
     $('#btnModalSave').text('Lưu');
+    $('#checkAssignAll').prop('checked', true);
+    $('#assigneesContainer').hide();
     setModalCategory(category || 'personal');
 
     const nextWeek = new Date();
@@ -918,6 +1256,24 @@ function openEditDeadlineModal(id) {
     setModalCategory(item.category || 'personal');
     $('#modalInputTitle').val(item.title);
 
+    if (item.category === 'group') {
+        let isAll = !item.assignees || item.assignees === 'all' || item.assignees === '["all"]';
+        $('#checkAssignAll').prop('checked', isAll);
+        if (isAll) {
+            $('#assigneesContainer').hide();
+        } else {
+            $('#assigneesContainer').show();
+            let parsed = [];
+            try {
+                parsed = typeof item.assignees === 'string' ? JSON.parse(item.assignees) : item.assignees;
+            } catch (e) {
+                parsed = [String(item.assignees)];
+            }
+            if (!Array.isArray(parsed)) parsed = [parsed];
+            renderAssigneesList(parsed);
+        }
+    }
+
     selectedModalDate = parseDeadlineDate(item.dueDate);
     miniCalYear = selectedModalDate.getFullYear();
     miniCalMonth = selectedModalDate.getMonth();
@@ -945,9 +1301,14 @@ function setModalCategory(category) {
     if (category === 'personal') {
         $('#tabBtnPersonal').css({ 'background': '#c2e7ff', 'color': '#001d35' });
         $('#tabBtnGroup').css({ 'background': '#f1f3f4', 'color': '#444746' });
+        $('#noticePersonal').show();
+        $('#noticeGroup').hide();
     } else {
         $('#tabBtnPersonal').css({ 'background': '#f1f3f4', 'color': '#444746' });
         $('#tabBtnGroup').css({ 'background': '#c2e7ff', 'color': '#001d35' });
+        $('#noticePersonal').hide();
+        $('#noticeGroup').show();
+        loadRegisteredUsers();
     }
 }
 
@@ -1092,6 +1453,23 @@ async function saveNewDeadlineFromModal() {
         return;
     }
 
+    let assignees = 'all';
+    if (activeModalCategory === 'group') {
+        const isAll = $('#checkAssignAll').is(':checked');
+        if (isAll) {
+            assignees = 'all';
+        } else {
+            const selected = [];
+            $('.assignee-item:checked').each(function () {
+                selected.push($(this).val());
+            });
+            assignees = selected.length > 0 ? selected : 'all';
+        }
+    } else {
+        const currentUser = getAuthUser();
+        assignees = currentUser ? [currentUser.id] : ['guest'];
+    }
+
     if (editingDeadlineId) {
         // CẬP NHẬT VỚI OPTIMISTIC UI (TỨC THÌ 0.01s)
         const updateId = editingDeadlineId;
@@ -1103,7 +1481,8 @@ async function saveNewDeadlineFromModal() {
             title: title,
             dueDate: dueDateStr,
             session: session,
-            category: activeModalCategory
+            category: activeModalCategory,
+            assignees: assignees
         });
         return;
     }
@@ -1116,7 +1495,8 @@ async function saveNewDeadlineFromModal() {
         title: title,
         dueDate: dueDateStr,
         session: session,
-        category: activeModalCategory
+        category: activeModalCategory,
+        assignees: assignees
     });
 }
 
@@ -1124,8 +1504,10 @@ async function saveNewDeadlineFromModal() {
 // 6. KHỞI TẠO VÀ SỰ KIỆN TRANG WEB
 // ==========================================
 $(document).ready(function () {
+    updateAuthHeaderUI();
     initDatePicker();
-    fetchDeadlinesFromDb(); // Tải dữ liệu ban đầu (Đọc từ Cache trước 0ms + Revalidate ngầm)
+    fetchDeadlinesFromDb();
+    loadRegisteredUsers();
 
     // Lọc tìm kiếm theo từ khóa trực tiếp từ SQL
     let searchTimeout = null;

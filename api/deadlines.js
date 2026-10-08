@@ -30,8 +30,8 @@ function sanitizeDueDate(val) {
     return String(val).replace(/(\+00:00|Z)$/, '');
 }
 
-    // Lấy query ID và keyword k từ request
-    const { id, k } = req.query || {};
+    // Lấy query ID, keyword k, và userId từ request
+    const { id, k, userId } = req.query || {};
 
     try {
         // 1. GET ALL hoặc GET THEO ID
@@ -52,6 +52,9 @@ function sanitizeDueDate(val) {
                         dueDate: sanitizeDueDate(item.due_date),
                         session: item.session,
                         category: item.category_id,
+                        userId: item.user_id || null,
+                        userName: item.user_name || null,
+                        assignees: item.assignees || 'all',
                         isCompleted: item.is_completed ? 1 : 0
                     }
                 });
@@ -63,14 +66,34 @@ function sanitizeDueDate(val) {
                 const resp = await fetch(url, { headers });
                 const list = await resp.json();
                 if (!resp.ok) throw new Error(list.message || 'Lỗi Supabase');
-                const formatted = list.map(item => ({
+                let formatted = list.map(item => ({
                     id: item.id,
                     title: item.title,
                     dueDate: sanitizeDueDate(item.due_date),
                     session: item.session,
                     category: item.category_id,
+                    userId: item.user_id || null,
+                    userName: item.user_name || null,
+                    assignees: item.assignees || 'all',
                     isCompleted: item.is_completed ? 1 : 0
                 }));
+
+                // Lọc theo quyền riêng tư và thành viên
+                if (userId && userId.trim()) {
+                    const u = userId.trim().toLowerCase();
+                    formatted = formatted.filter(item => {
+                        if (item.category === 'personal') return item.userId === u;
+                        if (item.category === 'group') {
+                            if (!item.assignees || item.assignees === 'all') return true;
+                            return String(item.assignees).toLowerCase().includes(u) || item.userId === u;
+                        }
+                        return false;
+                    });
+                } else {
+                    // Chưa đăng nhập: chỉ thấy deadline nhóm chung
+                    formatted = formatted.filter(item => item.category === 'group' && (!item.assignees || item.assignees === 'all'));
+                }
+
                 return res.status(200).json({ success: true, data: formatted });
             }
         }
@@ -86,6 +109,10 @@ function sanitizeDueDate(val) {
                 category_id: body.category || 'personal',
                 is_completed: body.isCompleted ? 1 : 0
             };
+            if (body.userId) payload.user_id = body.userId;
+            if (body.userName) payload.user_name = body.userName;
+            if (body.assignees) payload.assignees = typeof body.assignees === 'object' ? JSON.stringify(body.assignees) : body.assignees;
+
             const resp = await fetch(`${SUPABASE_URL}/rest/v1/deadlines`, {
                 method: 'POST',
                 headers: { ...headers, 'Prefer': 'return=representation' },
@@ -102,6 +129,9 @@ function sanitizeDueDate(val) {
                     dueDate: sanitizeDueDate(created.due_date),
                     session: created.session,
                     category: created.category_id,
+                    userId: created.user_id || body.userId || null,
+                    userName: created.user_name || body.userName || null,
+                    assignees: created.assignees || body.assignees || 'all',
                     isCompleted: created.is_completed ? 1 : 0
                 }
             });
@@ -116,6 +146,9 @@ function sanitizeDueDate(val) {
             if (body.dueDate !== undefined) payload.due_date = body.dueDate;
             if (body.session !== undefined) payload.session = body.session;
             if (body.category !== undefined) payload.category_id = body.category;
+            if (body.userId !== undefined) payload.user_id = body.userId;
+            if (body.userName !== undefined) payload.user_name = body.userName;
+            if (body.assignees !== undefined) payload.assignees = typeof body.assignees === 'object' ? JSON.stringify(body.assignees) : body.assignees;
             if (body.isCompleted !== undefined) payload.is_completed = body.isCompleted ? 1 : 0;
             payload.updated_at = new Date().toISOString();
 
@@ -135,6 +168,9 @@ function sanitizeDueDate(val) {
                     dueDate: sanitizeDueDate(updated.due_date),
                     session: updated.session,
                     category: updated.category_id,
+                    userId: updated.user_id || null,
+                    userName: updated.user_name || null,
+                    assignees: updated.assignees || 'all',
                     isCompleted: updated.is_completed ? 1 : 0
                 }
             });

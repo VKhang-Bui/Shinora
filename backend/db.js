@@ -21,7 +21,39 @@ db.exec('PRAGMA journal_mode = WAL;');
 // Tự động khởi tạo schema bảng nếu chưa có
 if (fs.existsSync(schemaPath)) {
     const schemaSql = fs.readFileSync(schemaPath, 'utf8');
-    db.exec(schemaSql);
+    try {
+        db.exec(schemaSql);
+    } catch (e) {
+        // Nếu lỗi do bảng cũ thiếu cột, sẽ được xử lý ở bước migration bên dưới
+    }
+}
+
+// Migration an toàn cho các cột mới và index nếu bảng deadlines đã tồn tại từ phiên bản trước
+try {
+    const cols = db.prepare("PRAGMA table_info(deadlines)").all();
+    const colNames = cols.map(c => c.name);
+    if (!colNames.includes('user_id')) db.exec("ALTER TABLE deadlines ADD COLUMN user_id VARCHAR(100);");
+    if (!colNames.includes('user_name')) db.exec("ALTER TABLE deadlines ADD COLUMN user_name NVARCHAR(100);");
+    if (!colNames.includes('assignees')) db.exec("ALTER TABLE deadlines ADD COLUMN assignees TEXT DEFAULT 'all';");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_deadlines_user_id ON deadlines(user_id);");
+} catch (e) {
+    // Bỏ qua nếu bảng chưa được tạo
+}
+
+// Khởi tạo danh sách 4 tài khoản thành viên ban đầu nếu chưa có
+try {
+    const seedUsers = [
+        ['bùi văn khang', 'Bùi Văn Khang'],
+        ['lê hoàng anh kiệt', 'Lê Hoàng Anh Kiệt'],
+        ['huỳnh thái khang', 'Huỳnh Thái Khang'],
+        ['lý thị ngọc như', 'Lý Thị Ngọc Như']
+    ];
+    const insertUser = db.prepare('INSERT OR IGNORE INTO users (id, name) VALUES (?, ?)');
+    for (const [id, name] of seedUsers) {
+        insertUser.run(id, name);
+    }
+} catch (e) {
+    // Bỏ qua nếu có lỗi
 }
 
 console.log(`[SQL Database] Kết nối thành công tới file CSDL thật: ${dbPath}`);

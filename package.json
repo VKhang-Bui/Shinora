@@ -1,6 +1,6 @@
 {
   "name": "portal-deadline-tracker",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Hệ thống Quản lý Deadline theo Tuần & Tháng kết nối Cơ Sở Dữ Liệu SQL thật (SQLite Native)",
   "main": "backend/server.js",
   "scripts": {

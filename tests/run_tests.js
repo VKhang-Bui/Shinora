@@ -279,6 +279,86 @@ async function runTestSuite() {
     }
 
     // -------------------------------------------------------------
+    // SUITE 7: KIỂM THỬ XÁC THỰC THÀNH VIÊN & PHÂN QUYỀN DEADLINE
+    // -------------------------------------------------------------
+    console.log(`\n${BOLD}${YELLOW}[SUITE 7]: Kiểm Thử Đăng Nhập & Phân Quyền Deadline Thành Viên (Auth & Partitioning)${RESET}`);
+
+    // Test 7.1: Đăng nhập sai mật khẩu -> HTTP 400
+    const resBadPass = await request({
+        host: HOST, port: PORT, path: '/api/auth/login', method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    }, { name: 'Bùi Văn Khang', password: 'wrong' });
+    assert(resBadPass.statusCode === 400 && resBadPass.json.message.includes('Mật khẩu không chính xác'), 'Đăng nhập sai mật khẩu trả về HTTP 400');
+
+    // Test 7.2: Đăng nhập đúng mật khẩu Vkhang@84752006 -> HTTP 200, user id chuẩn hóa không phân biệt HOA/thường
+    const resLogin1 = await request({
+        host: HOST, port: PORT, path: '/api/auth/login', method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    }, { name: 'Bùi Văn Khang', password: 'Vkhang@84752006' });
+    assert(resLogin1.statusCode === 200 && resLogin1.json.user.id === 'bùi văn khang', 'Đăng nhập thành công với mật khẩu Vkhang@84752006 (Case-insensitive ID)');
+
+    const resLogin2 = await request({
+        host: HOST, port: PORT, path: '/api/auth/login', method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    }, { name: 'bùi văn khang', password: 'Vkhang@84752006' });
+    assert(resLogin2.statusCode === 200 && resLogin2.json.user.id === resLogin1.json.user.id, 'Tên chữ thường trùng khớp tài khoản chữ HOA ("bùi văn khang" == "Bùi Văn Khang")');
+
+    // Test 7.3: Kiểm tra người lạ chưa được Admin tạo trong CSDL -> BỊ TỪ CHỐI HTTP 400
+    const resStranger = await request({
+        host: HOST, port: PORT, path: '/api/auth/login', method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    }, { name: 'Người Lạ Không Có Trong Hệ Thống', password: 'Vkhang@84752006' });
+    assert(resStranger.statusCode === 400 && resStranger.json.message.includes('Tài khoản không tồn tại'), 'Chặn người lạ chưa được Admin tạo sẵn trong CSDL (HTTP 400)');
+
+    // Test 7.4: Đăng nhập thành công với cả 4 tài khoản được cấp phép
+    const allowedAccounts = [
+        'Bùi Văn Khang',
+        'Lê Hoàng Anh Kiệt',
+        'Huỳnh Thái Khang',
+        'Lý Thị Ngọc Như'
+    ];
+    for (const accName of allowedAccounts) {
+        const resAcc = await request({
+            host: HOST, port: PORT, path: '/api/auth/login', method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        }, { name: accName, password: 'Vkhang@84752006' });
+        assert(resAcc.statusCode === 200 && resAcc.json.user, `Đăng nhập thành công tài khoản được cấp phép: "${accName}"`);
+    }
+
+    // Test 7.5: Lấy danh sách thành viên GET /api/users
+    const resUsers = await request({ host: HOST, port: PORT, path: '/api/users', method: 'GET' });
+    assert(resUsers.statusCode === 200 && Array.isArray(resUsers.json.data) && resUsers.json.data.length >= 4, 'GET /api/users trả về danh sách 4 thành viên được cấp phép');
+
+    // Test 7.6: Thành viên A (Lê Hoàng Anh Kiệt) tạo deadline cá nhân
+    const userADeadline = {
+        id: 'dl-private-kiet',
+        title: 'Kế hoạch cá nhân tuyệt mật của Kiệt',
+        dueDate: '2026-10-25T10:00:00',
+        session: 'sang',
+        category: 'personal',
+        userId: 'lê hoàng anh kiệt',
+        userName: 'Lê Hoàng Anh Kiệt',
+        assignees: '["lê hoàng anh kiệt"]'
+    };
+    const resCreateA = await request({
+        host: HOST, port: PORT, path: '/api/deadlines', method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    }, userADeadline);
+    assert(resCreateA.statusCode === 201, 'Lê Hoàng Anh Kiệt tạo deadline cá nhân thành công');
+
+    // Test 7.7: User B (Bùi Văn Khang) truy vấn -> TUYỆT ĐỐI KHÔNG THẤY deadline cá nhân của Kiệt
+    const resQueryB = await request({ host: HOST, port: PORT, path: '/api/deadlines?userId=' + encodeURIComponent('bùi văn khang'), method: 'GET' });
+    const userBList = resQueryB.json.data;
+    const canSeePrivateA = userBList.some(d => d.id === 'dl-private-kiet');
+    assert(!canSeePrivateA, 'Bùi Văn Khang KHÔNG THẤY deadline cá nhân của Kiệt (Bảo mật quyền riêng tư)');
+
+    // Test 7.8: Kiệt truy vấn -> Thấy được deadline cá nhân của chính mình
+    const resQueryA = await request({ host: HOST, port: PORT, path: '/api/deadlines?userId=' + encodeURIComponent('lê hoàng anh kiệt'), method: 'GET' });
+    const userAList = resQueryA.json.data;
+    const selfCanSeePrivateA = userAList.some(d => d.id === 'dl-private-kiet');
+    assert(selfCanSeePrivateA, 'Kiệt thấy được deadline cá nhân của chính mình khi đăng nhập');
+
+    // -------------------------------------------------------------
     // TỔNG KẾT BÁO CÁO
     // -------------------------------------------------------------
     console.log(`\n${BOLD}${CYAN}==============================================================${RESET}`);
