@@ -42,6 +42,9 @@ CREATE TABLE IF NOT EXISTS deadlines (
     user_id VARCHAR(100),
     user_name VARCHAR(100),
     assignees TEXT DEFAULT 'all',
+    group_name VARCHAR(255),
+    group_link VARCHAR(500),
+    description TEXT,
     is_completed SMALLINT DEFAULT 0 CHECK(is_completed IN (0, 1)),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -51,6 +54,9 @@ CREATE TABLE IF NOT EXISTS deadlines (
 ALTER TABLE deadlines ADD COLUMN IF NOT EXISTS user_id VARCHAR(100);
 ALTER TABLE deadlines ADD COLUMN IF NOT EXISTS user_name VARCHAR(100);
 ALTER TABLE deadlines ADD COLUMN IF NOT EXISTS assignees TEXT DEFAULT 'all';
+ALTER TABLE deadlines ADD COLUMN IF NOT EXISTS group_name VARCHAR(255);
+ALTER TABLE deadlines ADD COLUMN IF NOT EXISTS group_link VARCHAR(500);
+ALTER TABLE deadlines ADD COLUMN IF NOT EXISTS description TEXT;
 
 -- CHỈ MỤC TỐI ƯU TỐC ĐỘ TRUY VẤN
 CREATE INDEX IF NOT EXISTS idx_deadlines_due_date ON deadlines(due_date);
