@@ -2,6 +2,8 @@
   "version": 2,
   "cleanUrls": false,
   "rewrites": [
+    { "source": "/api/auth/login", "destination": "/api/auth.js" },
+    { "source": "/api/users", "destination": "/api/users.js" },
     { "source": "/api/deadlines/:id", "destination": "/api/deadlines.js?id=:id" },
     { "source": "/api/deadlines", "destination": "/api/deadlines.js" },
     { "source": "/frontend/pages/deadline.css", "destination": "/frontend/pages/deadline/deadline.css" },
