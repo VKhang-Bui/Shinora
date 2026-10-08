@@ -39,6 +39,20 @@ try {
     if (!colNames.includes('group_link')) db.exec("ALTER TABLE deadlines ADD COLUMN group_link VARCHAR(500);");
     if (!colNames.includes('description')) db.exec("ALTER TABLE deadlines ADD COLUMN description TEXT;");
     db.exec("CREATE INDEX IF NOT EXISTS idx_deadlines_user_id ON deadlines(user_id);");
+
+    // Tạo bảng feedbacks nếu chưa có
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS feedbacks (
+            id VARCHAR(50) PRIMARY KEY,
+            user_id VARCHAR(100),
+            user_name NVARCHAR(100),
+            content TEXT NOT NULL,
+            device_info TEXT,
+            screenshot TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_feedbacks_created_at ON feedbacks(created_at);
+    `);
 } catch (e) {
     // Bỏ qua nếu bảng chưa được tạo
 }

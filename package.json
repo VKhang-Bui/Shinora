@@ -16,5 +16,8 @@
     "sql"
   ],
   "author": "Khang Van",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "nodemailer": "^10.0.16"
+  }
 }

@@ -399,6 +399,39 @@ async function runTestSuite() {
     assert(selfCanSeePrivateA, 'Kiệt thấy được deadline cá nhân của chính mình khi đăng nhập');
 
     // -------------------------------------------------------------
+    // SUITE 8: KIỂM THỬ API GÓP Ý & PHẢN HỒI (FEEDBACKS)
+    // -------------------------------------------------------------
+    console.log(`\n${BOLD}[SUITE 8]: Kiểm Thử API Phản Hồi / Góp Ý (Feedbacks)${RESET}`);
+
+    // Test 8.1: POST thiếu content -> HTTP 400
+    const resFbEmpty = await request({
+        host: HOST, port: PORT, path: '/api/feedbacks', method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    }, { content: '   ' });
+    assert(resFbEmpty.statusCode === 400, 'POST feedback rỗng trả về HTTP 400 Bad Request');
+
+    // Test 8.2: POST feedback hợp lệ -> HTTP 201
+    const resFbValid = await request({
+        host: HOST, port: PORT, path: '/api/feedbacks', method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    }, {
+        userId: 'bùi văn khang',
+        userName: 'Bùi Văn Khang',
+        content: 'Giao diện mới rất trực quan và tiện dụng!',
+        deviceInfo: 'Mozilla/5.0 Chrome 120 | 1920x1080',
+        screenshot: 'data:image/jpeg;base64,/9j/4AAQSkZJRg=='
+    });
+    assert(resFbValid.statusCode === 201 && resFbValid.json.success === true, 'POST feedback thành công HTTP 201');
+    assert(resFbValid.json.data && resFbValid.json.data.id, 'Feedback mới được cấp ID thành công');
+
+    // Test 8.3: GET danh sách feedback -> HTTP 200
+    const resFbList = await request({ host: HOST, port: PORT, path: '/api/feedbacks', method: 'GET' });
+    assert(resFbList.statusCode === 200 && Array.isArray(resFbList.json?.data), 'GET /api/feedbacks trả về HTTP 200 và mảng dữ liệu');
+    const hasFeedback = Array.isArray(resFbList.json?.data) && resFbList.json.data.some(f => f.content === 'Giao diện mới rất trực quan và tiện dụng!');
+    assert(hasFeedback, 'CSDL lưu trữ chính xác nội dung feedback vừa gửi');
+
+
+    // -------------------------------------------------------------
     // TỔNG KẾT BÁO CÁO
     // -------------------------------------------------------------
     console.log(`\n${BOLD}${CYAN}==============================================================${RESET}`);

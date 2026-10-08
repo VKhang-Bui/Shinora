@@ -20,7 +20,7 @@
     <link rel="stylesheet" type="text/css" href="../../shared/css/toastr.min.css">
 
     <!-- CSS RIÊNG CỦA MODULE DEADLINE TRACKER -->
-    <link rel="stylesheet" type="text/css" href="./deadline.css?v=1.0.6">
+    <link rel="stylesheet" type="text/css" href="./deadline.css?v=1.1.4">
 </head>
 <body>
     <div id="focus-overlay"></div>
@@ -387,6 +387,25 @@
     </div>
 </div>
 
+    <!-- FOOTER CHÂN TRANG TOÀN BỘ WEBSITE SHINORA (CUỐI TRANG WEB) -->
+    <footer class="shinora-footer">
+        <div class="container-fluid">
+            <div class="shinora-footer-content">
+                <div class="shinora-footer-left">
+                    <span>&copy; 2026 Shinora &middot; Được thiết kế cho Sinh viên &amp; Nhóm</span>
+                </div>
+                <div class="shinora-footer-right">
+                    <button type="button" class="btn-footer-action btn-footer-feedback" onclick="openFeedbackDrawer()" title="Gửi góp ý, phản hồi hoặc báo lỗi">
+                        <i class="fa fa-commenting-o"></i> <span>Góp ý</span>
+                    </button>
+                    <button type="button" class="btn-footer-action btn-footer-help" onclick="openHelpDrawer()" title="Xem hướng dẫn sử dụng &amp; trợ giúp nhanh">
+                        <i class="fa fa-question-circle"></i> <span>Trợ giúp</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </footer>
+
 </div>
 
 <!-- NÚT TRÒN NỔI TẠO DEADLINE CHO ĐIỆN THOẠI (FAB) -->
@@ -631,14 +650,192 @@
     </div>
 </div>
 
+<!-- BACKDROP MỜ KHI MỞ GÓP Ý HOẶC TRỢ GIÚP -->
+<div id="drawerBackdrop" class="drawer-backdrop" onclick="closeAllDrawers()"></div>
+
+<!-- PANEL GÓP Ý (FEEDBACK DRAWER - PHONG CÁCH GOOGLE FEEDBACK) -->
+<div id="feedbackDrawer" class="slide-drawer" aria-hidden="true">
+    <div class="drawer-header">
+        <h3 class="drawer-header-title">
+            <i class="fa fa-commenting-o" style="color: #1a73e8;"></i> Gửi phản hồi đến Shinora
+        </h3>
+        <button type="button" class="btn-drawer-close" onclick="closeFeedbackDrawer()" title="Đóng">
+            <i class="fa fa-times"></i>
+        </button>
+    </div>
+    <div class="drawer-body">
+        <div>
+            <label style="display: block; font-size: 13px; font-weight: 600; color: #202124; margin-bottom: 6px;">
+                Mô tả ý kiến phản hồi của bạn <span style="color: #d93025;">*</span>
+            </label>
+            <textarea id="feedbackContentInput" class="feedback-textarea" placeholder="Hãy cho chúng tôi biết điều gì khiến bạn đưa ra ý kiến phản hồi này hoặc lỗi bạn gặp phải..."></textarea>
+            <div style="font-size: 11.5px; color: #70757a; margin-top: 4px; display: flex; align-items: center; gap: 4px;">
+                <i class="fa fa-info-circle"></i> Vui lòng không gửi thông tin nhạy cảm cá nhân.
+            </div>
+        </div>
+
+        <div>
+            <label style="display: block; font-size: 12.5px; font-weight: 600; color: #202124; margin-bottom: 6px;">
+                Ảnh chụp màn hình sẽ giúp chúng tôi hiểu rõ hơn về ý kiến phản hồi của bạn.
+            </label>
+            <button type="button" class="feedback-capture-btn" id="btnCaptureScreenshot" onclick="captureFeedbackScreenshot()">
+                <i class="fa fa-desktop"></i> Chụp ảnh màn hình trang hiện tại
+            </button>
+            <div id="feedbackScreenshotBox" class="feedback-screenshot-box" style="display: none; margin-top: 8px;">
+                <img id="feedbackScreenshotImg" src="" alt="Ảnh chụp màn hình">
+                <button type="button" class="feedback-remove-shot" onclick="removeFeedbackScreenshot()" title="Xóa ảnh này">
+                    <i class="fa fa-times"></i>
+                </button>
+            </div>
+        </div>
+
+        <div style="margin-top: 4px;">
+            <label style="display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: #3c4043; cursor: pointer; user-select: none;">
+                <input type="checkbox" id="checkFeedbackIncludeSystem" checked style="margin-top: 2px;">
+                <span>Chọn nhận thông tin cập nhật và gửi kèm thông tin thiết bị (trình duyệt, hệ thống) để hỗ trợ sửa lỗi nhanh hơn.</span>
+            </label>
+        </div>
+
+        <div style="font-size: 11px; color: #70757a; line-height: 1.45; border-top: 1px solid #f1f3f4; padding-top: 10px;">
+            Phản hồi của bạn giúp chúng tôi nâng cấp hệ thống ngày một hoàn thiện hơn. Cảm ơn sự đồng hành của bạn!
+        </div>
+    </div>
+    <div class="drawer-footer">
+        <button type="button" onclick="closeFeedbackDrawer()" style="background: none; border: none; padding: 7px 14px; font-size: 13px; font-weight: 600; color: #5f6368; cursor: pointer; border-radius: 4px;">
+            Hủy
+        </button>
+        <button type="button" id="btnSubmitFeedback" onclick="submitFeedbackForm()" style="background: #1a73e8; border: none; padding: 7px 20px; font-size: 13px; font-weight: 600; color: #ffffff; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">
+            <i class="fa fa-paper-plane" id="iconSubmitFeedback"></i> <span>Gửi</span>
+        </button>
+    </div>
+</div>
+
+<!-- PANEL TRỢ GIÚP (HELP DRAWER - PHONG CÁCH TỐI GIẢN TƯƠNG TÁC) -->
+<div id="helpDrawer" class="slide-drawer" aria-hidden="true">
+    <!-- MÀN HÌNH 1: DANH MỤC TRỢ GIÚP (MAIN VIEW) -->
+    <div id="helpMainScreen" style="display: flex; flex-direction: column; height: 100%;">
+        <div class="drawer-header">
+            <h3 class="drawer-header-title">
+                <i class="fa fa-question-circle" style="color: #1a73e8;"></i> Trợ giúp
+            </h3>
+            <button type="button" class="btn-drawer-close" onclick="closeHelpDrawer()" title="Đóng">
+                <i class="fa fa-times"></i>
+            </button>
+        </div>
+        <div class="drawer-body" style="padding-top: 14px;">
+            <div style="font-size: 12.5px; font-weight: 600; color: #5f6368; margin-bottom: 4px;">
+                Tài nguyên trợ giúp thường dùng
+            </div>
+
+            <!-- DANH SÁCH 5 MỤC (KHÔNG ĐÁNH SỐ) -->
+            <div id="helpTopicsList" style="display: flex; flex-direction: column; gap: 2px;">
+                <div class="help-topic-item" onclick="showHelpDetail('xem-lich')">
+                    <div class="help-topic-left">
+                        <i class="fa fa-file-text-o"></i>
+                        <span>Xem lịch</span>
+                    </div>
+                    <i class="fa fa-angle-right help-topic-arrow"></i>
+                </div>
+                <div class="help-topic-item" onclick="showHelpDetail('tao-xoa-lich')">
+                    <div class="help-topic-left">
+                        <i class="fa fa-file-text-o"></i>
+                        <span>Tạo/xóa lịch</span>
+                    </div>
+                    <i class="fa fa-angle-right help-topic-arrow"></i>
+                </div>
+                <div class="help-topic-item" onclick="showHelpDetail('quyen-xem-lich')">
+                    <div class="help-topic-left">
+                        <i class="fa fa-file-text-o"></i>
+                        <span>Ai có thể xem lịch của bạn</span>
+                    </div>
+                    <i class="fa fa-angle-right help-topic-arrow"></i>
+                </div>
+                <div class="help-topic-item" onclick="showHelpDetail('lich-ca-nhan')">
+                    <div class="help-topic-left">
+                        <i class="fa fa-file-text-o"></i>
+                        <span>Lịch cá nhân</span>
+                    </div>
+                    <i class="fa fa-angle-right help-topic-arrow"></i>
+                </div>
+                <div class="help-topic-item" onclick="showHelpDetail('lich-nhom')">
+                    <div class="help-topic-left">
+                        <i class="fa fa-file-text-o"></i>
+                        <span>Lịch nhóm</span>
+                    </div>
+                    <i class="fa fa-angle-right help-topic-arrow"></i>
+                </div>
+            </div>
+
+            <!-- THANH TÌM KIẾM TRONG TRỢ GIÚP -->
+            <div style="margin-top: 12px;">
+                <div class="help-search-box">
+                    <i class="fa fa-search"></i>
+                    <input type="text" id="helpSearchInput" class="help-search-input" placeholder="Tìm kiếm trong trợ giúp..." oninput="filterHelpTopics(this.value)">
+                </div>
+            </div>
+
+            <!-- PHẦN CHÂN: HỖ TRỢ THÊM -->
+            <div style="margin-top: auto; padding-top: 16px; border-top: 1px solid #f1f3f4;">
+                <div style="font-size: 13px; font-weight: 600; color: #202124; margin-bottom: 8px;">
+                    Bạn cần trợ giúp thêm?
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <!-- Zalo -->
+                    <a href="https://zalo.me/0354616301" target="_blank" rel="noopener noreferrer" style="display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 8px; background: #f8f9fa; border: 1px solid #e8eaed; text-decoration: none; color: inherit; transition: all 0.15s ease;" onmouseover="this.style.background='#f1f3f4'; this.style.borderColor='#dadce0';" onmouseout="this.style.background='#f8f9fa'; this.style.borderColor='#e8eaed';">
+                        <div style="width: 28px; height: 28px; border-radius: 6px; background: #e8f0fe; color: #0068ff; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0;">
+                            <i class="fa fa-comments"></i>
+                        </div>
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="font-size: 12.5px; font-weight: 600; color: #202124;">Zalo: 0354616301</div>
+                            <div style="font-size: 11px; color: #5f6368; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Nhắn tin hỗ trợ kỹ thuật hoặc trao đổi trực tiếp</div>
+                        </div>
+                        <i class="fa fa-external-link" style="color: #80868b; font-size: 11px;"></i>
+                    </a>
+
+                    <!-- Email -->
+                    <a href="mailto:vkhg.bui@gmail.com" style="display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 8px; background: #f8f9fa; border: 1px solid #e8eaed; text-decoration: none; color: inherit; transition: all 0.15s ease;" onmouseover="this.style.background='#f1f3f4'; this.style.borderColor='#dadce0';" onmouseout="this.style.background='#f8f9fa'; this.style.borderColor='#e8eaed';">
+                        <div style="width: 28px; height: 28px; border-radius: 6px; background: #fce8e6; color: #d93025; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0;">
+                            <i class="fa fa-envelope"></i>
+                        </div>
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="font-size: 12.5px; font-weight: 600; color: #202124;">Email: vkhg.bui@gmail.com</div>
+                            <div style="font-size: 11px; color: #5f6368; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Gửi phản hồi, yêu cầu hỗ trợ hoặc báo lỗi</div>
+                        </div>
+                        <i class="fa fa-external-link" style="color: #80868b; font-size: 11px;"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MÀN HÌNH 2: NỘI DUNG CHI TIẾT TƯƠNG TÁC (DETAIL VIEW) -->
+    <div id="helpDetailScreen" style="display: none; flex-direction: column; height: 100%;">
+        <div class="drawer-header">
+            <button type="button" class="btn-drawer-close" onclick="backToHelpMain()" title="Quay lại danh mục" style="margin-right: 4px;">
+                <i class="fa fa-arrow-left"></i>
+            </button>
+            <h3 class="drawer-header-title" id="helpDetailHeaderTitle" style="flex: 1;">
+                Chi tiết trợ giúp
+            </h3>
+            <button type="button" class="btn-drawer-close" onclick="closeHelpDrawer()" title="Đóng">
+                <i class="fa fa-times"></i>
+            </button>
+        </div>
+        <div class="drawer-body" id="helpDetailContentBody">
+            <!-- Nội dung chi tiết render động qua JS kèm nút tương tác -->
+        </div>
+    </div>
+</div>
+
 <!-- SCRIPTS DÙNG CHUNG VÀ SCRIPT RIÊNG CỦA MODULE DEADLINE -->
 <script type="text/javascript" src="../../shared/js/jquery-3.4.1.min.js"></script>
 <script type="text/javascript" src="../../shared/js/kendo.all.min.js"></script>
 <script type="text/javascript" src="../../shared/js/kendo.culture.vi-VN.min.js"></script>
 <script type="text/javascript" src="../../shared/js/toastr.min.js"></script>
 <script type="text/javascript" src="../../shared/js/bootstrap.bundle.min.js"></script>
+<script type="text/javascript" src="../../shared/js/html2canvas.min.js"></script>
 <script type="text/javascript" src="../../shared/js/main.js"></script>
-<script type="text/javascript" src="./deadline.js?v=1.0.8"></script>
+<script type="text/javascript" src="./deadline.js?v=1.1.4"></script>
 
 </body>
 </html>

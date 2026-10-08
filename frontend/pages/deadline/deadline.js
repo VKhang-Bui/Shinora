@@ -2401,3 +2401,897 @@ function sendBrowserNativeNotification(title, body) {
     }
 }
 
+/* ==========================================================================
+   FOOTER, DRAWER GÓP Ý & DRAWER TRỢ GIÚP (MINIMALIST & ACTIONABLE)
+   ========================================================================== */
+
+let currentFeedbackScreenshotBase64 = null;
+
+// Mở Drawer Góp ý
+function openFeedbackDrawer() {
+    closeHelpDrawer();
+    $('#drawerBackdrop').addClass('open');
+    $('#feedbackDrawer').addClass('open').attr('aria-hidden', 'false');
+    setTimeout(function() {
+        $('#feedbackContentInput').focus();
+    }, 150);
+}
+window.openFeedbackDrawer = openFeedbackDrawer;
+
+// Đóng Drawer Góp ý
+function closeFeedbackDrawer() {
+    $('#feedbackDrawer').removeClass('open').attr('aria-hidden', 'true');
+    if (!$('#helpDrawer').hasClass('open')) {
+        $('#drawerBackdrop').removeClass('open');
+    }
+}
+window.closeFeedbackDrawer = closeFeedbackDrawer;
+
+// Mở Drawer Trợ giúp
+function openHelpDrawer() {
+    closeFeedbackDrawer();
+    backToHelpMain();
+    $('#helpSearchInput').val('');
+    filterHelpTopics('');
+    $('#drawerBackdrop').addClass('open');
+    $('#helpDrawer').addClass('open').attr('aria-hidden', 'false');
+}
+window.openHelpDrawer = openHelpDrawer;
+
+// Đóng Drawer Trợ giúp
+function closeHelpDrawer() {
+    $('#helpDrawer').removeClass('open').attr('aria-hidden', 'true');
+    if (!$('#feedbackDrawer').hasClass('open')) {
+        $('#drawerBackdrop').removeClass('open');
+    }
+}
+window.closeHelpDrawer = closeHelpDrawer;
+
+// Đóng toàn bộ Drawers
+function closeAllDrawers() {
+    closeFeedbackDrawer();
+    closeHelpDrawer();
+}
+window.closeAllDrawers = closeAllDrawers;
+
+// Chụp ảnh màn hình góp ý bằng html2canvas
+function captureFeedbackScreenshot() {
+    const $btn = $('#btnCaptureScreenshot');
+    const originalText = $btn.html();
+    $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Đang chụp ảnh màn hình...');
+
+    // Ẩn tạm drawers và backdrop để không che giao diện cần chụp
+    $('#feedbackDrawer, #drawerBackdrop').css('visibility', 'hidden');
+
+    if (typeof html2canvas === 'undefined') {
+        $('#feedbackDrawer, #drawerBackdrop').css('visibility', '');
+        $btn.prop('disabled', false).html(originalText);
+        if (typeof toastr !== 'undefined') {
+            toastr.error('Thư viện chụp ảnh chưa sẵn sàng.', 'Lỗi');
+        }
+        return;
+    }
+
+    html2canvas(document.body, {
+        useCORS: true,
+        logging: false,
+        scale: 1,
+        ignoreElements: function(el) {
+            return el.classList && (el.classList.contains('slide-drawer') || el.classList.contains('drawer-backdrop'));
+        }
+    }).then(function(canvas) {
+        $('#feedbackDrawer, #drawerBackdrop').css('visibility', '');
+        $btn.prop('disabled', false).html(originalText);
+
+        try {
+            // Nén ảnh JPEG chất lượng 0.65 để gửi gọn nhẹ
+            currentFeedbackScreenshotBase64 = canvas.toDataURL('image/jpeg', 0.65);
+            $('#feedbackScreenshotImg').attr('src', currentFeedbackScreenshotBase64);
+            $('#feedbackScreenshotBox').show();
+            if (typeof toastr !== 'undefined') {
+                toastr.success('Đã đính kèm ảnh chụp màn hình!', 'Thành công');
+            }
+        } catch (e) {
+            console.error('Lỗi nén ảnh:', e);
+        }
+    }).catch(function(err) {
+        $('#feedbackDrawer, #drawerBackdrop').css('visibility', '');
+        $btn.prop('disabled', false).html(originalText);
+        console.error('html2canvas error:', err);
+        if (typeof toastr !== 'undefined') {
+            toastr.error('Không thể chụp ảnh màn hình lúc này.', 'Lỗi');
+        }
+    });
+}
+window.captureFeedbackScreenshot = captureFeedbackScreenshot;
+
+// Xóa ảnh màn hình đã chụp
+function removeFeedbackScreenshot() {
+    currentFeedbackScreenshotBase64 = null;
+    $('#feedbackScreenshotImg').attr('src', '');
+    $('#feedbackScreenshotBox').hide();
+}
+window.removeFeedbackScreenshot = removeFeedbackScreenshot;
+
+// Gửi Form Góp ý
+function submitFeedbackForm() {
+    const content = $('#feedbackContentInput').val().trim();
+    if (!content) {
+        if (typeof toastr !== 'undefined') {
+            toastr.warning('Vui lòng nhập mô tả ý kiến hoặc lỗi bạn gặp phải.', 'Thông báo');
+        }
+        $('#feedbackContentInput').focus();
+        return;
+    }
+
+    const includeSystem = $('#checkFeedbackIncludeSystem').is(':checked');
+    const user = getAuthUser();
+    const deviceInfo = includeSystem
+        ? `${navigator.userAgent} | Màn hình: ${window.innerWidth}x${window.innerHeight} | URL: ${window.location.href}`
+        : null;
+
+    const payload = {
+        userId: user ? user.id : 'guest',
+        userName: user ? user.name : 'Khách vãng lai',
+        content: content,
+        deviceInfo: deviceInfo,
+        screenshot: currentFeedbackScreenshotBase64 || null
+    };
+
+    const $btn = $('#btnSubmitFeedback');
+    const originalHtml = $btn.html();
+    $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> <span>Đang gửi...</span>');
+
+    $.ajax({
+        url: '/api/feedbacks',
+        type: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(payload),
+        success: function(res) {
+            $btn.prop('disabled', false).html(originalHtml);
+            if (typeof toastr !== 'undefined') {
+                toastr.success('Cảm ơn bạn! Ý kiến đóng góp đã được gửi thành công.', 'Đã tiếp nhận');
+            }
+            $('#feedbackContentInput').val('');
+            removeFeedbackScreenshot();
+            closeFeedbackDrawer();
+        },
+        error: function(xhr) {
+            $btn.prop('disabled', false).html(originalHtml);
+            console.error('Feedback submit error:', xhr);
+            if (typeof toastr !== 'undefined') {
+                toastr.error('Có lỗi xảy ra khi gửi phản hồi. Vui lòng thử lại!', 'Thất bại');
+            }
+        }
+    });
+}
+window.submitFeedbackForm = submitFeedbackForm;
+
+// TRỢ GIÚP - DỮ LIỆU & CHI TIẾT CÁC MỤC (TỐI GIẢN & TƯƠNG TÁC THỰC CHIẾN)
+const HELP_TOPICS_DATA = {
+    'xem-lich': {
+        title: 'Xem lịch',
+        badge: 'Tổng quan giao diện',
+        content: `
+            <div class="help-section-desc">
+                Shinora Deadline cung cấp 2 chế độ hiển thị linh hoạt giúp bạn theo dõi công việc từ chi tiết từng ngày đến bức tranh tổng thể dài hạn.
+            </div>
+
+            <!-- CHẾ ĐỘ XEM & ĐIỀU HƯỚNG -->
+            <div style="font-size: 12.5px; font-weight: 700; color: #202124; margin: 12px 0 6px 0;">
+                1. Chế độ hiển thị & Điều hướng thời gian
+            </div>
+            <div style="font-size: 12px; color: #3c4043; line-height: 1.6; margin-bottom: 10px;">
+                • <strong>Xem theo tuần:</strong> Phân chia ca học tập chi tiết (Ca Sáng: trước 12h, Ca Chiều: 12h - 18h, Ca Tối: sau 18h).<br>
+                • <strong>Xem theo tháng:</strong> Xem toàn cảnh 30 ngày trong tháng để chủ động lên lịch ôn thi.<br>
+                • <strong>Điều hướng:</strong> Sử dụng các nút <code>&lt; Trở về</code>, <code>Hiện tại</code>, <code>Tiếp &gt;</code> hoặc ô chọn ngày nhanh.
+            </div>
+
+            <!-- HÌNH ẢNH MINH HỌA LAPTOP: CHUYỂN ĐỔI TUẦN / THÁNG -->
+            <div class="laptop-mockup-wrapper">
+                <div class="laptop-mockup-screen">
+                    <div class="laptop-mockup-camera"></div>
+                    <div class="laptop-mockup-inner" style="height: 145px; background: #ffffff; padding: 8px;">
+                        <!-- Toolbar mini -->
+                        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e8eaed; padding-bottom: 5px; margin-bottom: 6px;">
+                            <span style="font-weight: 700; color: #003763; font-size: 9.5px;">Bảng theo dõi Deadline</span>
+                            <div style="display: flex; gap: 3px;">
+                                <span style="font-size: 8px; padding: 1px 5px; background: #e8f0fe; color: #1a73e8; border-radius: 3px; font-weight: 600;">Hiện tại</span>
+                                <span style="font-size: 8px; padding: 1px 5px; background: #f1f3f4; color: #3c4043; border-radius: 3px;">Tiếp &gt;</span>
+                            </div>
+                        </div>
+                        <!-- Bố cục Sidebar mini + Bảng mini -->
+                        <div style="display: flex; gap: 6px; height: 100px;">
+                            <!-- Sidebar mini có pulsing -->
+                            <div style="width: 70px; background: #f8f9fa; border: 1px solid #e8eaed; border-radius: 4px; padding: 4px; font-size: 8px; display: flex; flex-direction: column; gap: 3px; position: relative;">
+                                <div style="font-weight: 700; color: #ff851b; background: #fff; padding: 2px 4px; border-radius: 3px; border: 1px solid #ffd591; position: relative;">
+                                    Tuần
+                                    <div class="pulsing-indicator" style="top: -4px; left: -4px; width: 38px; height: 18px; border-radius: 4px;"></div>
+                                </div>
+                                <div style="color: #5f6368; padding: 2px 4px;">Tháng</div>
+                                <div style="font-size: 7.5px; color: #d93025; font-weight: 700; margin-top: auto; line-height: 1.2;">
+                                    ⬅ Đổi tuần/tháng
+                                </div>
+                            </div>
+                            <!-- Lưới màu sắc mini -->
+                            <div style="flex: 1; border: 1px solid #e8eaed; border-radius: 4px; padding: 4px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; font-size: 7.5px; align-content: start;">
+                                <div style="background: #fce8e6; border: 1px solid #ea4335; color: #c5221f; border-radius: 2px; padding: 3px; font-weight: 600;">🚨 3 ngày</div>
+                                <div style="background: #fff7e6; border: 1px solid #ff851b; color: #d46b08; border-radius: 2px; padding: 3px; font-weight: 600;">⏰ 1 tuần</div>
+                                <div style="background: #feffe6; border: 1px solid #faad14; color: #ad6800; border-radius: 2px; padding: 3px; font-weight: 600;">📅 3 tuần</div>
+                                <div style="background: #f6ffed; border: 1px solid #52c41a; color: #389e0d; border-radius: 2px; padding: 3px; font-weight: 600;">🌿 2 tháng</div>
+                                <div style="background: #f5f5f5; border: 1px dashed #bfbfbf; color: #8c8c8c; border-radius: 2px; padding: 3px;">✔ Đã xong</div>
+                                <div style="background: #f5f5f5; border: 1px solid #8c8c8c; color: #595959; border-radius: 2px; padding: 3px;">⏳ Quá hạn</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="laptop-mockup-base"></div>
+            </div>
+
+            <!-- BẢNG GIẢI MÃ TOÀN BỘ MÀU SẮC QUY ƯỚC -->
+            <div style="font-size: 12.5px; font-weight: 700; color: #202124; margin: 16px 0 8px 0;">
+                2. Quy ước toàn bộ hệ thống màu sắc
+            </div>
+            <div style="font-size: 11.5px; color: #5f6368; margin-bottom: 8px;">
+                Màu sắc của thẻ deadline được tính toán tự động dựa trên khoảng cách giữa thời gian hiện tại và hạn chót:
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+                <!-- Đỏ -->
+                <div class="help-field-card" style="border-left: 3px solid #e02424; background: #fffdfd;">
+                    <div class="field-name" style="color: #e02424;">
+                        <span style="display: inline-block; width: 12px; height: 12px; background: #e02424; border-radius: 2px;"></span>
+                        Màu đỏ (Khẩn cấp cao nhất) &middot; Hạn chót &le; 3 ngày
+                    </div>
+                    <div style="font-size: 11.5px; color: #3c4043;">
+                        Deadline sắp đến rất gần. Bạn nên ưu tiên hoàn thành ngay để không bị trễ nộp.
+                    </div>
+                </div>
+
+                <!-- Cam -->
+                <div class="help-field-card" style="border-left: 3px solid #ff851b; background: #fffdf9;">
+                    <div class="field-name" style="color: #d46b08;">
+                        <span style="display: inline-block; width: 12px; height: 12px; background: #ff851b; border-radius: 2px;"></span>
+                        Màu cam (Sắp tới) &middot; Hạn chót trong 1 tuần (4 - 7 ngày)
+                    </div>
+                    <div style="font-size: 11.5px; color: #3c4043;">
+                        Các bài tập hoặc đồ án cần bắt đầu chuẩn bị tài liệu và làm dàn ý.
+                    </div>
+                </div>
+
+                <!-- Vàng -->
+                <div class="help-field-card" style="border-left: 3px solid #faad14; background: #fffff9;">
+                    <div class="field-name" style="color: #ad6800;">
+                        <span style="display: inline-block; width: 12px; height: 12px; background: #ffc107; border-radius: 2px;"></span>
+                        Màu vàng (Trung hạn) &middot; Hạn chót trong 3 tuần (8 - 21 ngày)
+                    </div>
+                    <div style="font-size: 11.5px; color: #3c4043;">
+                        Thời gian còn tương đối thoải mái để phân công các phần công việc dài hạn.
+                    </div>
+                </div>
+
+                <!-- Xanh lá -->
+                <div class="help-field-card" style="border-left: 3px solid #28a745; background: #fafffa;">
+                    <div class="field-name" style="color: #28a745;">
+                        <span style="display: inline-block; width: 12px; height: 12px; background: #28a745; border-radius: 2px;"></span>
+                        Màu xanh lá (Thoải mái) &middot; Hạn chót trong 2 tháng (22 - 60 ngày)
+                    </div>
+                    <div style="font-size: 11.5px; color: #3c4043;">
+                        Lịch thi học kỳ hoặc dự án lớn dài hạn của trường.
+                    </div>
+                </div>
+
+                <!-- Xám mờ (Đã xong) -->
+                <div class="help-field-card" style="border-left: 3px solid #9e9e9e; background: #fbfbfb;">
+                    <div class="field-name" style="color: #616161;">
+                        <span style="display: inline-block; width: 12px; height: 12px; background: #bdbdbd; border-radius: 2px;"></span>
+                        Màu xám mờ &middot; Đã hoàn thành [ ✔ Đã xong ]
+                    </div>
+                    <div style="font-size: 11.5px; color: #3c4043;">
+                        Bất kể còn bao nhiêu ngày, khi bạn tích dấu <strong>[ ✔ Đã xong ]</strong>, thẻ sẽ tự chuyển sang màu xám mờ để giảm tải thị giác trên lịch.
+                    </div>
+                </div>
+
+                <!-- Xám đậm (Quá hạn) -->
+                <div class="help-field-card" style="border-left: 3px solid #424242; background: #f5f5f5;">
+                    <div class="field-name" style="color: #424242;">
+                        <span style="display: inline-block; width: 12px; height: 12px; background: #616161; border-radius: 2px;"></span>
+                        Màu xám đậm &middot; Quá hạn nộp [khác]
+                    </div>
+                    <div style="font-size: 11.5px; color: #3c4043;">
+                        Deadline đã qua ngày giờ nộp nhưng chưa được tích xong.
+                    </div>
+                </div>
+            </div>
+
+            <!-- CÁC BIỂU TƯỢNG PHÂN BIỆT -->
+            <div style="font-size: 12.5px; font-weight: 700; color: #202124; margin: 16px 0 8px 0;">
+                3. Biểu tượng nhận diện trên thẻ
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <div style="flex: 1; padding: 8px; border: 1px solid #e8eaed; border-radius: 6px; background: #fff; font-size: 11.5px;">
+                    <strong style="color: #1a73e8;"><i class="fa fa-user"></i> Cá nhân:</strong> Chỉ riêng bạn thấy khi đăng nhập.
+                </div>
+                <div style="flex: 1; padding: 8px; border: 1px solid #e8eaed; border-radius: 6px; background: #fff; font-size: 11.5px;">
+                    <strong style="color: #137333;"><i class="fa fa-users"></i> Cả nhóm:</strong> Toàn bộ thành viên trong nhóm cùng thấy.
+                </div>
+            </div>
+
+            <div class="help-interactive-actions" style="margin-top: 16px;">
+                <button type="button" class="btn-help-action btn-help-action-primary" onclick="actionSwitchHelpView('week')">
+                    <i class="fa fa-calendar-check-o"></i> Chuyển sang xem theo tuần
+                </button>
+                <button type="button" class="btn-help-action btn-help-action-outline" onclick="actionSwitchHelpView('month')">
+                    <i class="fa fa-calendar"></i> Chuyển sang xem theo tháng
+                </button>
+            </div>
+        `
+    },
+    'tao-xoa-lich': {
+        title: 'Tạo/xóa lịch',
+        badge: 'Thao tác cơ bản',
+        content: `
+            <!-- THANH ĐIỀU HƯỚNG NHANH 2 PHẦN -->
+            <div style="display: flex; gap: 6px; margin-bottom: 14px; background: #f1f3f4; padding: 3px; border-radius: 8px;">
+                <button type="button" class="btn-help-tab active" onclick="switchHelpSubTab('tab-help-create', this)" style="flex: 1; padding: 6px; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; background: #ffffff; color: #1a73e8; box-shadow: 0 1px 2px rgba(0,0,0,0.1); transition: all 0.2s;">
+                    <i class="fa fa-plus-circle"></i> 1. Tạo lịch mới
+                </button>
+                <button type="button" class="btn-help-tab" onclick="switchHelpSubTab('tab-help-delete', this)" style="flex: 1; padding: 6px; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; background: transparent; color: #5f6368; transition: all 0.2s;">
+                    <i class="fa fa-trash-o"></i> 2. Xóa lịch & Cảnh báo
+                </button>
+            </div>
+
+            <!-- PHẦN 1: HƯỚNG DẪN TẠO LỊCH -->
+            <div id="tab-help-create" class="help-subtab-content">
+                <div class="help-section-desc">
+                    Shinora Deadline cho phép bạn thêm hạn chót học tập chỉ trong vài giây, hỗ trợ phân loại cá nhân hoặc bài tập nhóm.
+                </div>
+
+                <!-- BƯỚC 1: CÁCH MỞ CỬA SỔ -->
+                <div style="font-size: 12.5px; font-weight: 700; color: #202124; margin: 10px 0 6px 0;">
+                    Bước 1: Mở cửa sổ Tạo lịch
+                </div>
+                <div style="font-size: 12px; color: #3c4043; line-height: 1.6; margin-bottom: 10px;">
+                    Nhấn nút 
+                    <span class="inline-create-dropdown" style="display: inline-block; position: relative;">
+                        <button type="button" class="btn-help-inline-create" onclick="toggleHelpInlineDropdown(event)" title="Bấm để thử tạo lịch">
+                            <i class="fa fa-plus"></i> Tạo <i class="fa fa-caret-down"></i>
+                        </button>
+                        <span id="helpInlineCreateMenu" class="help-inline-menu" style="display: none;">
+                            <a href="javascript:void(0);" onclick="actionCreatePersonalDeadline()"><i class="fa fa-user"></i> Tạo cho Cá nhân</a>
+                            <a href="javascript:void(0);" onclick="actionCreateGroupDeadline()"><i class="fa fa-users"></i> Tạo cho Cả nhóm</a>
+                        </span>
+                    </span>
+                    ở góc trái trên cùng, hoặc <strong>nhấp đúp chuột vào bất kỳ ô ngày nào</strong> trên bảng lịch.
+                </div>
+
+                <!-- HÌNH ẢNH MINH HỌA LAPTOP: TẠO LỊCH -->
+                <div class="laptop-mockup-wrapper">
+                    <div class="laptop-mockup-screen">
+                        <div class="laptop-mockup-camera"></div>
+                        <div class="laptop-mockup-inner" style="height: 155px; background: #ffffff; padding: 8px;">
+                            <!-- Header mini -->
+                            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e8eaed; padding-bottom: 5px; margin-bottom: 8px;">
+                                <div style="display: flex; align-items: center; gap: 4px;">
+                                    <span style="font-weight: 700; color: #003763; font-size: 10px;">DEADLINE TRACKER</span>
+                                </div>
+                                <span style="font-size: 9px; padding: 2px 6px; background: #e8f0fe; color: #1a73e8; border-radius: 4px; font-weight: 600;">Đăng nhập</span>
+                            </div>
+                            <!-- Toolbar có nút Tạo -->
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; position: relative;">
+                                <!-- NÚT TẠO CÓ VÒNG TRÒN PULSING -->
+                                <div style="position: relative; display: inline-flex; align-items: center;">
+                                    <span style="background: #1a73e8; color: #fff; padding: 3px 8px; border-radius: 4px; font-weight: 600; font-size: 9.5px; display: inline-flex; align-items: center; gap: 3px;">
+                                        <i class="fa fa-plus"></i> Tạo ▾
+                                    </span>
+                                    <div class="pulsing-indicator" style="top: -5px; left: -5px; width: 62px; height: 26px; border-radius: 6px;"></div>
+                                </div>
+                                <span style="font-size: 8.5px; color: #d93025; font-weight: 700; background: #fce8e6; padding: 2px 6px; border-radius: 10px; border: 1px dashed #d93025;">
+                                    ⬅ Nhấn nút Tạo tại đây
+                                </span>
+                            </div>
+                            <!-- Lưới mini -->
+                            <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; border: 1px solid #e8eaed; border-radius: 4px; padding: 4px; background: #fafafa; font-size: 8px;">
+                                <div style="background: #e8f0fe; padding: 3px; text-align: center; font-weight: 600; color: #1a73e8;">T2</div>
+                                <div style="background: #e8f0fe; padding: 3px; text-align: center; font-weight: 600; color: #1a73e8;">T3</div>
+                                <div style="background: #e8f0fe; padding: 3px; text-align: center; font-weight: 600; color: #1a73e8; position: relative;">
+                                    T4
+                                    <div style="position: absolute; bottom: -14px; left: -10px; white-space: nowrap; font-size: 7.5px; color: #188038; font-weight: 600;">
+                                        👆 Hoặc nhấp ô ngày
+                                    </div>
+                                </div>
+                                <div style="background: #e8f0fe; padding: 3px; text-align: center; font-weight: 600; color: #1a73e8;">T5</div>
+                                <div style="background: #e8f0fe; padding: 3px; text-align: center; font-weight: 600; color: #1a73e8;">T6</div>
+                                <div style="height: 38px; background: #fff; border: 1px dashed #dadce0;"></div>
+                                <div style="height: 38px; background: #fff; border: 1px dashed #dadce0;"></div>
+                                <div style="height: 38px; background: #e6f4ea; border: 1px solid #34a853; border-radius: 2px; padding: 2px; font-size: 7.5px; color: #137333;">Nhấp đúp</div>
+                                <div style="height: 38px; background: #fff; border: 1px dashed #dadce0;"></div>
+                                <div style="height: 38px; background: #fff; border: 1px dashed #dadce0;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="laptop-mockup-base"></div>
+                </div>
+
+                <!-- BƯỚC 2: CÁC TRƯỜNG THÔNG TIN KHI TẠO -->
+                <div style="font-size: 12.5px; font-weight: 700; color: #202124; margin: 14px 0 8px 0;">
+                    Bước 2: Các trường thông tin chi tiết
+                </div>
+
+                <div class="help-field-card">
+                    <div class="field-name"><i class="fa fa-pencil"></i> 1. Tiêu đề deadline <span style="color: #d93025;">*</span></div>
+                    <div>Tên bài tập, đồ án hoặc sự kiện cần hoàn thành (Ví dụ: <em>Nộp Báo cáo Tiến độ Tuần 3</em>).</div>
+                </div>
+
+                <div class="help-field-card">
+                    <div class="field-name"><i class="fa fa-calendar"></i> 2. Ngày & Thời gian nộp</div>
+                    <div>Nhấp chọn ngày và nhập giờ hạn chót (mặc định 09:00). Hệ thống sẽ tự phân loại:
+                        <ul style="margin: 4px 0 0 16px; padding: 0;">
+                            <li><strong>Ca Sáng:</strong> trước 12:00</li>
+                            <li><strong>Ca Chiều:</strong> từ 12:00 đến 18:00</li>
+                            <li><strong>Ca Tối:</strong> từ 18:00 đến 23:59</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="help-field-card">
+                    <div class="field-name"><i class="fa fa-shield"></i> 3. Phạm vi (Cá nhân / Cả nhóm)</div>
+                    <div>
+                        <strong>👤 Cá nhân:</strong> Chỉ riêng bạn thấy khi đăng nhập.<br>
+                        <strong>👥 Cả nhóm:</strong> Mọi thành viên trong nhóm đều thấy để cùng thực hiện.
+                    </div>
+                </div>
+
+                <div class="help-field-card">
+                    <div class="field-name"><i class="fa fa-users"></i> 4. Phân công thành viên <em>(chỉ có ở Cả nhóm)</em></div>
+                    <div>Mặc định là <strong>Toàn bộ nhóm</strong>. Bạn có thể bỏ tích và chọn đích danh từng bạn chịu trách nhiệm công việc này.</div>
+                </div>
+
+                <div class="help-field-card">
+                    <div class="field-name"><i class="fa fa-tag"></i> 5. Tên nhóm & 🔗 Link nhóm <em>(tùy chọn)</em></div>
+                    <div>Điền tên nhóm (VD: <em>Nhóm 3</em>) và dán link nhóm chat (<strong>Zalo, Telegram, Teams...</strong>). Thành viên nhấp vào sẽ mở ngay phòng chat trao đổi!</div>
+                </div>
+
+                <div class="help-field-card">
+                    <div class="field-name"><i class="fa fa-align-left"></i> 6. Mô tả / Ghi chú công việc <em>(tùy chọn)</em></div>
+                    <div>Ghi chú chi tiết yêu cầu của giảng viên, dàn ý bài tập hoặc các tài liệu tham khảo.</div>
+                </div>
+
+                <div class="help-field-card" style="border-left: 3px solid #1a73e8;">
+                    <div class="field-name" style="color: #1a73e8;"><i class="fa fa-check-square-o"></i> 7. Ô tích [ ✔ Đã xong ]</div>
+                    <div>Nếu công việc đã hoàn thành, tích vào ô này. Thẻ deadline sẽ tự động <strong>chuyển sang màu xám mờ [khác]</strong> để báo hiệu xong việc, giúp bạn tập trung vào các deadline gấp còn lại!</div>
+                </div>
+
+                <div class="help-interactive-actions" style="margin-top: 14px;">
+                    <button type="button" class="btn-help-action btn-help-action-primary" onclick="actionCreateDeadlineNow()">
+                        <i class="fa fa-plus-circle"></i> Thử tạo lịch ngay bây giờ
+                    </button>
+                </div>
+            </div>
+
+            <!-- PHẦN 2: HƯỚNG DẪN XÓA LỊCH & CẢNH BÁO -->
+            <div id="tab-help-delete" class="help-subtab-content" style="display: none;">
+                <div class="help-section-desc">
+                    Khi một deadline không còn cần thiết hoặc tạo nhầm, bạn có thể xóa bỏ hoàn toàn khỏi hệ thống.
+                </div>
+
+                <div style="font-size: 12.5px; font-weight: 700; color: #202124; margin: 10px 0 6px 0;">
+                    Cách thực hiện xóa deadline
+                </div>
+                <div style="font-size: 12px; color: #3c4043; line-height: 1.6; margin-bottom: 10px;">
+                    1. Nhấp chuột vào <strong>Thẻ deadline</strong> bạn muốn xóa trên bảng lịch để mở hộp thông tin chi tiết.<br>
+                    2. Nhấn vào biểu tượng <strong><i class="fa fa-trash-o" style="color: #d93025;"></i> Thùng rác</strong> ở thanh công cụ góc trên bên phải.<br>
+                    3. Xác nhận đồng ý xóa trên hộp thoại.
+                </div>
+
+                <!-- HÌNH ẢNH MINH HỌA LAPTOP: XÓA LỊCH -->
+                <div class="laptop-mockup-wrapper">
+                    <div class="laptop-mockup-screen">
+                        <div class="laptop-mockup-camera"></div>
+                        <div class="laptop-mockup-inner" style="height: 165px; background: #ffffff; padding: 10px; display: flex; align-items: center; justify-content: center;">
+                            <!-- Popover mô phỏng -->
+                            <div style="background: #ffffff; border: 1px solid #dadce0; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.18); width: 220px; padding: 8px; position: relative;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f3f4; padding-bottom: 4px; margin-bottom: 6px;">
+                                    <span style="font-size: 9px; color: #5f6368; font-weight: 600;">Chi tiết Deadline</span>
+                                    <div style="display: flex; align-items: center; gap: 6px; position: relative;">
+                                        <i class="fa fa-pencil" style="font-size: 10px; color: #5f6368;"></i>
+                                        <!-- BIỂU TƯỢNG THÙNG RÁC CÓ PULSING -->
+                                        <div style="position: relative; display: inline-flex; align-items: center; justify-content: center;">
+                                            <i class="fa fa-trash-o" style="font-size: 11px; color: #d93025; font-weight: bold;"></i>
+                                            <div class="pulsing-indicator" style="top: -6px; left: -6px; width: 22px; height: 22px;"></div>
+                                        </div>
+                                        <i class="fa fa-times" style="font-size: 10px; color: #5f6368;"></i>
+                                    </div>
+                                </div>
+                                <div style="font-size: 10px; font-weight: 700; color: #1f1f1f; margin-bottom: 2px;">Tiểu luận Triết học</div>
+                                <div style="font-size: 8.5px; color: #5f6368; margin-bottom: 6px;">Hạn chót: 20/10/2026 · 09:00</div>
+                                <div style="background: #fce8e6; border: 1px dashed #d93025; border-radius: 4px; padding: 3px 6px; font-size: 8.5px; color: #d93025; font-weight: 600; text-align: center;">
+                                    ⬆ Nhấn biểu tượng thùng rác để xóa
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="laptop-mockup-base"></div>
+                </div>
+
+                <!-- HỘP CẢNH BÁO QUAN TRỌNG KHI XÓA -->
+                <div class="help-danger-alert">
+                    <div style="display: flex; align-items: center; gap: 6px; font-weight: 700; margin-bottom: 4px; font-size: 12.5px;">
+                        <i class="fa fa-exclamation-triangle"></i> LƯU Ý QUAN TRỌNG KHI XÓA DEADLINE
+                    </div>
+                    <ul style="margin: 0; padding-left: 18px;">
+                        <li><strong>Xóa vĩnh viễn:</strong> Dữ liệu sẽ bị xóa trực tiếp khỏi CSDL và <strong>không thể phục hồi</strong> (không có thùng rác tạm).</li>
+                        <li><strong>Ảnh hưởng lịch nhóm:</strong> Nếu xóa deadline thuộc chế độ <strong>Cả nhóm</strong>, lịch này sẽ biến mất trên màn hình của <strong>toàn bộ các thành viên khác</strong>. Hãy trao đổi với nhóm trước khi xóa!</li>
+                        <li>💡 <strong>Khuyên dùng:</strong> Nếu công việc đã làm xong, bạn nên mở chỉnh sửa và tích chọn <strong>[ ✔ Đã xong ]</strong> thay vì xóa để vẫn lưu lại lịch sử làm việc của nhóm.</li>
+                    </ul>
+                </div>
+            </div>
+        `
+    },
+    'quyen-xem-lich': {
+        title: 'Ai có thể xem lịch của bạn',
+        badge: 'Quyền riêng tư & Bảo mật',
+        content: `
+            <div class="help-section-desc">
+                Shinora bảo vệ tối đa tính riêng tư cá nhân của sinh viên đồng thời duy trì sự gắn kết minh bạch trong bài tập nhóm.
+            </div>
+
+            <!-- PHÂN CẤP 3 TẦNG BẢO MẬT -->
+            <div style="font-size: 12.5px; font-weight: 700; color: #202124; margin: 12px 0 6px 0;">
+                1. Ba cấp độ phân quyền dữ liệu
+            </div>
+
+            <div class="help-field-card" style="border-left: 3px solid #1a73e8;">
+                <div class="field-name" style="color: #1a73e8;"><i class="fa fa-lock"></i> 🔒 Lịch Cá Nhân &middot; Tuyệt mật 100%</div>
+                <div>Chỉ duy nhất <strong>bạn (khi đăng nhập đúng tài khoản)</strong> mới nhìn thấy và quản lý. Bất kỳ ai khác (kể cả thành viên cùng nhóm hoặc khách) đều <strong>hoàn toàn không thấy</strong> trên lịch của họ.</div>
+            </div>
+
+            <div class="help-field-card" style="border-left: 3px solid #137333;">
+                <div class="field-name" style="color: #137333;"><i class="fa fa-users"></i> 👥 Lịch Cả Nhóm &middot; Công khai nội bộ nhóm</div>
+                <div>Toàn bộ <strong>4 thành viên trong nhóm</strong> đều nhìn thấy để cùng chia sẻ tài liệu, xem ai chịu trách nhiệm và theo dõi tiến độ chung.</div>
+            </div>
+
+            <div class="help-field-card" style="border-left: 3px solid #f57c00;">
+                <div class="field-name" style="color: #f57c00;"><i class="fa fa-eye-slash"></i> 👁️ Khách vãng lai &middot; Chưa đăng nhập</div>
+                <div>Chỉ xem được các lịch chung công khai của nhóm, <strong>tuyệt đối không xem được</strong> bất kỳ deadline cá nhân nào của bạn.</div>
+            </div>
+
+            <!-- HÌNH ẢNH MINH HỌA LAPTOP: SO SÁNH 2 MÀN HÌNH -->
+            <div style="font-size: 12.5px; font-weight: 700; color: #202124; margin: 14px 0 6px 0;">
+                2. Minh họa hiển thị thực tế trên 2 thiết bị
+            </div>
+
+            <div class="laptop-mockup-wrapper">
+                <div class="laptop-mockup-screen">
+                    <div class="laptop-mockup-camera"></div>
+                    <div class="laptop-mockup-inner" style="height: 155px; background: #ffffff; padding: 8px;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; height: 100%;">
+                            <!-- Màn hình máy của Bạn -->
+                            <div style="border: 1px solid #c2e7ff; background: #f8fbff; border-radius: 4px; padding: 6px;">
+                                <div style="font-size: 8.5px; font-weight: 700; color: #1a73e8; margin-bottom: 4px;">
+                                    💻 Máy của BẠN (Đã đăng nhập)
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 3px; font-size: 7.5px;">
+                                    <div style="background: #e8f0fe; color: #1a73e8; padding: 2px 4px; border-radius: 2px; font-weight: 600;">
+                                        👤 Ôn thi Tin học (Cá nhân)
+                                    </div>
+                                    <div style="background: #e6f4ea; color: #137333; padding: 2px 4px; border-radius: 2px; font-weight: 600;">
+                                        👥 Nộp Báo cáo (Cả nhóm)
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Màn hình máy của Bạn cùng nhóm -->
+                            <div style="border: 1px solid #dadce0; background: #fafafa; border-radius: 4px; padding: 6px; position: relative;">
+                                <div style="font-size: 8.5px; font-weight: 700; color: #5f6368; margin-bottom: 4px;">
+                                    👥 Máy của BẠN CÙNG NHÓM
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 3px; font-size: 7.5px;">
+                                    <div style="border: 1px dashed #d93025; color: #d93025; padding: 2px 4px; border-radius: 2px; background: #fff5f5; font-size: 7px; text-align: center;">
+                                        🔒 Ẩn sạch lịch riêng của bạn
+                                    </div>
+                                    <div style="background: #e6f4ea; color: #137333; padding: 2px 4px; border-radius: 2px; font-weight: 600;">
+                                        👥 Nộp Báo cáo (Cả nhóm)
+                                    </div>
+                                </div>
+                                <div class="pulsing-indicator" style="top: 24px; left: 10px; width: 85px; height: 20px; border-radius: 4px;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="laptop-mockup-base"></div>
+            </div>
+
+            <!-- BẢNG MA TRẬN ĐỐI CHIẾU QUYỀN HẠN -->
+            <div style="font-size: 12.5px; font-weight: 700; color: #202124; margin: 14px 0 6px 0;">
+                3. Bảng đối chiếu quyền riêng tư
+            </div>
+            <div style="overflow-x: auto; border: 1px solid #e8eaed; border-radius: 6px; margin-bottom: 12px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 11.5px; text-align: left;">
+                    <thead style="background: #f1f3f4; color: #202124;">
+                        <tr>
+                            <th style="padding: 6px 8px; border-bottom: 1px solid #dadce0;">Loại dữ liệu</th>
+                            <th style="padding: 6px 8px; border-bottom: 1px solid #dadce0;">Chưa đăng nhập</th>
+                            <th style="padding: 6px 8px; border-bottom: 1px solid #dadce0;">Bạn (Chính chủ)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td style="padding: 6px 8px; border-bottom: 1px solid #f1f3f4;"><strong>Lịch cá nhân</strong></td>
+                            <td style="padding: 6px 8px; border-bottom: 1px solid #f1f3f4; color: #d93025;">❌ Ẩn 100%</td>
+                            <td style="padding: 6px 8px; border-bottom: 1px solid #f1f3f4; color: #188038;">✅ Xem &amp; Sửa</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 6px 8px;"><strong>Lịch cả nhóm</strong></td>
+                            <td style="padding: 6px 8px; color: #188038;">✅ Xem lịch chung</td>
+                            <td style="padding: 6px 8px; color: #188038;">✅ Toàn quyền quản lý</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="help-interactive-actions">
+                <button type="button" class="btn-help-action btn-help-action-primary" onclick="actionCheckAccountOrLogin()">
+                    <i class="fa fa-user-circle"></i> Kiểm tra tài khoản hiện tại của bạn
+                </button>
+            </div>
+        `
+    },
+    'lich-ca-nhan': {
+        title: 'Lịch cá nhân',
+        badge: 'Không gian riêng tư',
+        content: `
+            <div class="help-section-desc">
+                Lịch cá nhân là không gian làm việc riêng tư 100% của bạn. Các thành viên khác trong nhóm hoàn toàn không nhìn thấy lịch này.
+            </div>
+
+            <!-- ƯU ĐIỂM -->
+            <div style="font-size: 12.5px; font-weight: 700; color: #202124; margin: 12px 0 6px 0;">
+                1. Tại sao nên dùng Lịch cá nhân?
+            </div>
+            <div style="font-size: 12px; color: #3c4043; line-height: 1.6; margin-bottom: 10px;">
+                • <strong>Bảo mật tối đa:</strong> Thích hợp cho lịch ôn thi cá nhân, nhắc hẹn riêng tư, bài tập môn riêng.<br>
+                • <strong>Không làm loãng nhóm:</strong> Giữ bảng lịch của nhóm đồ án luôn gọn gàng và chuyên nghiệp.<br>
+                • <strong>Nhắc nhở riêng:</strong> Hệ thống tự động gửi thông báo trực tiếp đến bạn khi sắp tới hạn chót.
+            </div>
+
+            <!-- HÌNH ẢNH MINH HỌA LAPTOP: TẠO LỊCH CÁ NHÂN -->
+            <div class="laptop-mockup-wrapper">
+                <div class="laptop-mockup-screen">
+                    <div class="laptop-mockup-camera"></div>
+                    <div class="laptop-mockup-inner" style="height: 155px; background: #ffffff; padding: 10px; display: flex; align-items: center; justify-content: center;">
+                        <!-- Mockup Modal Tạo cá nhân -->
+                        <div style="background: #ffffff; border: 1px solid #dadce0; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.15); width: 230px; padding: 8px; font-size: 8.5px;">
+                            <div style="font-weight: 700; color: #1f1f1f; margin-bottom: 6px; border-bottom: 1px solid #1a73e8; padding-bottom: 3px;">
+                                Ôn thi Giữa kỳ An ninh mạng
+                            </div>
+                            <!-- Tabs chọn Cá nhân đang bật -->
+                            <div style="display: flex; gap: 4px; margin-bottom: 6px; position: relative;">
+                                <span style="background: #c2e7ff; color: #001d35; font-weight: 700; padding: 2px 8px; border-radius: 10px; display: inline-flex; align-items: center; gap: 3px;">
+                                    <i class="fa fa-user"></i> Cá nhân
+                                </span>
+                                <span style="background: #f1f3f4; color: #5f6368; padding: 2px 8px; border-radius: 10px;">
+                                    👥 Cả nhóm
+                                </span>
+                                <div class="pulsing-indicator" style="top: -4px; left: -4px; width: 68px; height: 22px; border-radius: 10px;"></div>
+                            </div>
+                            <div style="font-size: 8px; color: #5f6368; line-height: 1.3;">
+                                📅 25/10/2026 &middot; 09:00<br>
+                                🔒 <em>Chỉ bạn nhìn thấy khi đăng nhập</em>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="laptop-mockup-base"></div>
+            </div>
+
+            <!-- CÁCH TẠO NHANH -->
+            <div style="font-size: 12.5px; font-weight: 700; color: #202124; margin: 14px 0 6px 0;">
+                2. Cách tạo nhanh Lịch cá nhân
+            </div>
+            <div style="font-size: 12px; color: #3c4043; line-height: 1.6; margin-bottom: 12px;">
+                Khi bạn mở cửa sổ tạo deadline, hệ thống <strong>tự động chọn sẵn tab Cá nhân</strong>. Các mục rườm rà như phân công thành viên và link nhóm sẽ tự ẩn đi, giúp bạn tạo chỉ trong 5 giây!
+            </div>
+
+            <div class="help-interactive-actions">
+                <button type="button" class="btn-help-action btn-help-action-primary" onclick="actionCreatePersonalDeadline()">
+                    <i class="fa fa-user-plus"></i> Tạo lịch cá nhân ngay bây giờ
+                </button>
+            </div>
+        `
+    },
+    'lich-nhom': {
+        title: 'Lịch nhóm',
+        badge: 'Cộng tác & Phân công',
+        content: `
+            <div class="help-section-desc">
+                Lịch nhóm được thiết kế chuyên biệt cho đồ án môn học, bài tập lớn và dự án nghiên cứu có nhiều thành viên cùng tham gia.
+            </div>
+
+            <!-- 3 SỨC MẠNH CỐT LÕI -->
+            <div style="font-size: 12.5px; font-weight: 700; color: #202124; margin: 12px 0 6px 0;">
+                1. Tính năng nổi bật của Lịch nhóm
+            </div>
+
+            <div class="help-field-card">
+                <div class="field-name"><i class="fa fa-refresh"></i> 👥 Đồng bộ thời gian thực cho cả nhóm</div>
+                <div>Chỉ cần một bạn tạo deadline, toàn bộ các thành viên khác trong nhóm đều thấy ngay lập tức trên bảng lịch của mình.</div>
+            </div>
+
+            <div class="help-field-card">
+                <div class="field-name"><i class="fa fa-check-circle-o"></i> 🎯 Phân công trách nhiệm rõ ràng</div>
+                <div>Có thể giao cho <strong>Toàn bộ nhóm</strong> hoặc tích chọn đích danh từng bạn (VD: <em>Khang viết Báo cáo, Kiệt làm Slide</em>).</div>
+            </div>
+
+            <div class="help-field-card">
+                <div class="field-name"><i class="fa fa-external-link"></i> 🔗 Tích hợp link nhóm chat Zalo / Telegram</div>
+                <div>Đính kèm đường link nhóm trao đổi. Khi mở xem chi tiết deadline, thành viên chỉ cần bấm vào là chuyển thẳng tới phòng chat!</div>
+            </div>
+
+            <!-- HÌNH ẢNH MINH HỌA LAPTOP: TẠO LỊCH NHÓM & LINK ZALO -->
+            <div class="laptop-mockup-wrapper">
+                <div class="laptop-mockup-screen">
+                    <div class="laptop-mockup-camera"></div>
+                    <div class="laptop-mockup-inner" style="height: 165px; background: #ffffff; padding: 10px; display: flex; align-items: center; justify-content: center;">
+                        <!-- Mockup Popover Lịch nhóm -->
+                        <div style="background: #ffffff; border: 1px solid #dadce0; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.15); width: 235px; padding: 8px; font-size: 8.5px;">
+                            <div style="font-weight: 700; color: #1f1f1f; margin-bottom: 4px;">
+                                Nộp Báo cáo Tiến độ Đồ án Tuần 4
+                            </div>
+                            <div style="font-size: 8px; color: #137333; font-weight: 600; margin-bottom: 4px;">
+                                👥 Lịch Cả nhóm &middot; Phân công: Toàn bộ nhóm
+                            </div>
+                            <!-- Link Zalo có pulsing -->
+                            <div style="position: relative; display: inline-flex; align-items: center; margin-top: 2px;">
+                                <span style="background: #e8f0fe; color: #1a73e8; border: 1px solid #c2e7ff; padding: 3px 8px; border-radius: 4px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">
+                                    <i class="fa fa-comments"></i> Mở Nhóm Zalo Đồ Án ↗
+                                </span>
+                                <div class="pulsing-indicator" style="top: -5px; left: -5px; width: 145px; height: 26px; border-radius: 6px;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="laptop-mockup-base"></div>
+            </div>
+
+            <!-- NGUYÊN TẮC LÀM VIỆC NHÓM -->
+            <div class="help-danger-alert" style="background: #fffbe6; border-color: #ffe58f; border-left-color: #faad14; color: #d46b08;">
+                <div style="font-weight: 700; margin-bottom: 4px;">
+                    <i class="fa fa-lightbulb-o"></i> LƯU Ý VĂN HÓA LÀM VIỆC NHÓM
+                </div>
+                <ul style="margin: 0; padding-left: 18px; font-size: 11.5px; color: #ad6800;">
+                    <li>Không tự ý xóa deadline của nhóm nếu chưa trao đổi thống nhất.</li>
+                    <li>Khi hoàn thành phần việc được giao, hãy tích chọn <strong>[ ✔ Đã xong ]</strong> để các bạn khác cùng yên tâm theo dõi.</li>
+                </ul>
+            </div>
+
+            <div class="help-interactive-actions" style="margin-top: 14px;">
+                <button type="button" class="btn-help-action btn-help-action-primary" onclick="actionCreateGroupDeadline()">
+                    <i class="fa fa-users"></i> Tạo lịch nhóm ngay bây giờ
+                </button>
+            </div>
+        `
+    }
+};
+
+// Hiển thị Màn hình chi tiết chủ đề trợ giúp
+function showHelpDetail(topicKey) {
+    const data = HELP_TOPICS_DATA[topicKey];
+    if (!data) return;
+
+    $('#helpMainScreen').hide();
+    $('#helpDetailScreen').css('display', 'flex');
+    $('#helpDetailHeaderTitle').text(data.title);
+
+    const html = `
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+            <h4 class="help-detail-title" style="margin: 0;">${data.title}</h4>
+            ${data.badge ? `<span style="font-size: 11px; font-weight: 600; color: #1a73e8; background: #e8f0fe; padding: 2px 8px; border-radius: 12px;">${data.badge}</span>` : ''}
+        </div>
+        ${data.content}
+    `;
+
+    $('#helpDetailContentBody').html(html);
+}
+window.showHelpDetail = showHelpDetail;
+
+// Quay lại Màn hình chính danh mục trợ giúp
+function backToHelpMain() {
+    $('#helpDetailScreen').hide();
+    $('#helpMainScreen').css('display', 'flex');
+}
+window.backToHelpMain = backToHelpMain;
+
+// Tìm kiếm lọc 5 mục trong trợ giúp
+function filterHelpTopics(query) {
+    const q = (query || '').toLowerCase().trim();
+    $('#helpTopicsList .help-topic-item').each(function() {
+        const text = $(this).text().toLowerCase();
+        if (!q || text.indexOf(q) !== -1) {
+            $(this).show();
+        } else {
+            $(this).hide();
+        }
+    });
+}
+window.filterHelpTopics = filterHelpTopics;
+
+// CÁC HÀNH ĐỘNG TƯƠNG TÁC THỰC CHIẾN TỪ TRỢ GIÚP (ACTIONABLE)
+function actionSwitchHelpView(mode) {
+    closeHelpDrawer();
+    if (typeof switchViewMode === 'function') {
+        switchViewMode(mode);
+    }
+}
+window.actionSwitchHelpView = actionSwitchHelpView;
+
+function actionCreateDeadlineNow() {
+    closeHelpDrawer();
+    if (typeof openCreateDeadlineModal === 'function') {
+        openCreateDeadlineModal();
+    }
+}
+window.actionCreateDeadlineNow = actionCreateDeadlineNow;
+
+function actionCreatePersonalDeadline() {
+    closeHelpDrawer();
+    if (typeof openCreateDeadlineModal === 'function') {
+        openCreateDeadlineModal('personal');
+    }
+}
+window.actionCreatePersonalDeadline = actionCreatePersonalDeadline;
+
+function actionCreateGroupDeadline() {
+    closeHelpDrawer();
+    if (typeof openCreateDeadlineModal === 'function') {
+        openCreateDeadlineModal('group');
+    }
+}
+window.actionCreateGroupDeadline = actionCreateGroupDeadline;
+
+function actionCheckAccountOrLogin() {
+    closeHelpDrawer();
+    const user = getAuthUser();
+    if (user && user.id && user.id !== 'guest') {
+        if (typeof toastr !== 'undefined') {
+            toastr.info(`Bạn đang đăng nhập với tài khoản: ${user.name}`, 'Thông tin tài khoản');
+        }
+    } else {
+        if (typeof openLoginModal === 'function') {
+            openLoginModal();
+        }
+    }
+}
+window.actionCheckAccountOrLogin = actionCheckAccountOrLogin;
+
+// Bắt phím tắt Esc để đóng Drawers
+$(document).keydown(function(e) {
+    if (e.key === 'Escape' || e.keyCode === 27) {
+        if ($('#feedbackDrawer').hasClass('open') || $('#helpDrawer').hasClass('open')) {
+            closeAllDrawers();
+        }
+    }
+});
+
+// Chuyển đổi tab con trong chi tiết Trợ giúp
+function switchHelpSubTab(tabId, btnElement) {
+    $('.help-subtab-content').hide();
+    $('#' + tabId).show();
+    $('.btn-help-tab').css({ background: 'transparent', color: '#5f6368', boxShadow: 'none' });
+    $(btnElement).css({ background: '#ffffff', color: '#1a73e8', boxShadow: '0 1px 2px rgba(0,0,0,0.1)' });
+}
+window.switchHelpSubTab = switchHelpSubTab;
+
+// Đóng mở dropdown mini tạo lịch inline
+function toggleHelpInlineDropdown(event) {
+    if (event) event.stopPropagation();
+    $('#helpInlineCreateMenu').toggle();
+}
+window.toggleHelpInlineDropdown = toggleHelpInlineDropdown;
+
+$(document).click(function(e) {
+    if (!$(e.target).closest('.inline-create-dropdown').length) {
+        $('#helpInlineCreateMenu').hide();
+    }
+});
+
+

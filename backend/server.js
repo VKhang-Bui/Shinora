@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const deadlineController = require('./controllers/deadlineController');
 const userController = require('./controllers/userController');
+const feedbackController = require('./controllers/feedbackController');
 
 const PORT = process.env.PORT || 3000;
 const FRONTEND_DIR = path.join(__dirname, '..', 'frontend');
@@ -84,7 +85,27 @@ const server = http.createServer(async (req, res) => {
     }
 
     // ==========================================
-    // 2. RESTFUL API ENDPOINTS CHO DEADLINES
+    // 2. RESTFUL API ENDPOINTS CHO FEEDBACKS
+    // ==========================================
+    if (pathname === '/api/feedbacks') {
+        try {
+            if (req.method === 'POST') {
+                const body = await parseJsonBody(req);
+                const result = feedbackController.create(body);
+                return sendJson(res, 201, { success: true, message: 'Cảm ơn bạn đã gửi phản hồi!', data: result });
+            }
+            if (req.method === 'GET') {
+                const list = feedbackController.getAll();
+                return sendJson(res, 200, { success: true, data: list });
+            }
+            return sendJson(res, 405, { success: false, message: 'Phương thức không được hỗ trợ' });
+        } catch (err) {
+            return sendJson(res, 400, { success: false, message: err.message });
+        }
+    }
+
+    // ==========================================
+    // 3. RESTFUL API ENDPOINTS CHO DEADLINES
     // ==========================================
     if (pathname.startsWith('/api/deadlines')) {
         const idMatch = pathname.match(/^\/api\/deadlines\/([^\/]+)$/);

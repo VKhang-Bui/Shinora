@@ -53,3 +53,16 @@ CREATE TABLE IF NOT EXISTS deadlines (
 CREATE INDEX IF NOT EXISTS idx_deadlines_due_date ON deadlines(due_date);
 CREATE INDEX IF NOT EXISTS idx_deadlines_category ON deadlines(category_id);
 CREATE INDEX IF NOT EXISTS idx_deadlines_user_id ON deadlines(user_id);
+
+-- BẢNG FEEDBACKS (GÓP Ý & BÁO LỖI CỦA NGƯỜI DÙNG)
+CREATE TABLE IF NOT EXISTS feedbacks (
+    id VARCHAR(50) PRIMARY KEY,
+    user_id VARCHAR(100),
+    user_name NVARCHAR(100),
+    content TEXT NOT NULL,
+    device_info TEXT,
+    screenshot TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_feedbacks_created_at ON feedbacks(created_at);
+
