@@ -2418,10 +2418,47 @@ function urlBase64ToUint8Array(base64String) {
     return outputArray;
 }
 
+// Kiểm tra toàn diện năng lực Web Push trên thiết bị hiện tại (Desktop, Android, iOS Safari PWA)
+function checkWebPushCapabilities() {
+    const hasServiceWorker = typeof navigator !== 'undefined' && 'serviceWorker' in navigator;
+    const hasPushManager = typeof window !== 'undefined' && 'PushManager' in window;
+    const hasNotification = typeof window !== 'undefined' && 'Notification' in window;
+
+    // Phát hiện iOS (iPhone, iPad, iPod)
+    const isIOS = typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent || '') || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+    // Kiểm tra xem trang có đang chạy ở chế độ PWA (Standalone / Đã thêm vào màn hình chính) không
+    const isStandalone = typeof window !== 'undefined' && (window.navigator.standalone === true || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches));
+
+    return {
+        hasServiceWorker,
+        hasPushManager,
+        hasNotification,
+        isIOS,
+        isStandalone,
+        isSupported: hasServiceWorker && hasPushManager && hasNotification
+    };
+}
+window.checkWebPushCapabilities = checkWebPushCapabilities;
+
+// Hàm an toàn chờ Service Worker sẵn sàng với timeout để không bao giờ bị treo vô tận
+function getServiceWorkerReadyWithTimeout(timeoutMs = 3500) {
+    if (!('serviceWorker' in navigator)) {
+        return Promise.reject(new Error('Trình duyệt không hỗ trợ Service Worker'));
+    }
+    return Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Quá thời gian chờ Service Worker (timeout 3.5s)')), timeoutMs))
+    ]);
+}
+
 // Đảm bảo và tự động đăng ký Push Subscription với máy chủ
 async function ensurePushSubscription() {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-        throw new Error('Trình duyệt trên thiết bị này không hỗ trợ Web Push ngoài màn hình (yêu cầu HTTPS hoặc duyệt trên máy tính qua localhost).');
+    const caps = checkWebPushCapabilities();
+    if (!caps.isSupported) {
+        if (caps.isIOS && !caps.isStandalone) {
+            throw new Error('Trên iPhone (iOS), bạn hãy bấm nút Chia sẻ (Share) -> Thêm vào MH chính (Add to Home Screen) để bật thông báo đẩy khi đóng web!');
+        }
+        throw new Error('Trình duyệt trên thiết bị này không hỗ trợ Web Push ngoài màn hình (yêu cầu Chrome, Safari PWA hoặc Edge có hỗ trợ Service Worker).');
     }
 
     // 1. Kiểm tra / Xin quyền thông báo hệ điều hành
@@ -2430,18 +2467,39 @@ async function ensurePushSubscription() {
         permission = await Notification.requestPermission();
     }
     if (permission !== 'granted') {
-        throw new Error('Bạn chưa cấp quyền thông báo cho trình duyệt. Vui lòng bấm [Cho phép] (Allow) để nhận thông báo vào máy tính/hệ thống!');
+        throw new Error('Bạn chưa cấp quyền thông báo cho trình duyệt. Vui lòng bấm [Cho phép] (Allow) để nhận thông báo vào thiết bị!');
     }
 
-    // 2. Chờ Service Worker sẵn sàng
-    const registration = await navigator.serviceWorker.ready;
+    // 2. Chờ Service Worker với timeout bảo vệ 3.5s
+    let registration = null;
+    try {
+        registration = await getServiceWorkerReadyWithTimeout(3500);
+    } catch (e) {
+        try {
+            registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+            await new Promise(r => setTimeout(r, 400));
+        } catch (regErr) {
+            throw new Error('Không thể khởi động Service Worker: ' + regErr.message);
+        }
+    }
+
+    if (!registration) {
+        throw new Error('Service Worker chưa sẵn sàng. Vui lòng tải lại trang.');
+    }
 
     // 3. Lấy hoặc tạo mới subscription
     let sub = await registration.pushManager.getSubscription();
     if (!sub) {
-        const resKey = await fetch('/api/push/vapid-key').then(r => r.json());
-        if (!resKey.success || !resKey.publicKey) {
-            throw new Error('Không lấy được Public Key từ máy chủ');
+        let resKey = null;
+        try {
+            const resp = await fetch('/api/push/vapid-key');
+            resKey = await resp.json();
+        } catch (err) {
+            throw new Error('Không thể kết nối máy chủ để lấy VAPID Public Key: ' + err.message);
+        }
+
+        if (!resKey || !resKey.success || !resKey.publicKey) {
+            throw new Error(resKey?.message || 'Không lấy được Public Key từ máy chủ');
         }
 
         const convertedKey = urlBase64ToUint8Array(resKey.publicKey);
@@ -2451,32 +2509,35 @@ async function ensurePushSubscription() {
         });
     }
 
-    // 4. Lưu / Cập nhật subscription lên cơ sở dữ liệu SQLite
+    // 4. Lưu / Cập nhật subscription lên cơ sở dữ liệu
     const user = getAuthUser();
-    await fetch('/api/push/subscribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            subscription: sub,
-            userId: user ? user.id : 'guest'
-        })
-    });
+    try {
+        await fetch('/api/push/subscribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                subscription: sub,
+                userId: user ? user.id : 'guest'
+            })
+        });
+    } catch (saveErr) {
+        console.warn('[Auto Push Subscribe Save Warning]:', saveErr.message);
+    }
 
     return sub;
 }
 window.ensurePushSubscription = ensurePushSubscription;
 
 async function initServiceWorker() {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-        return;
-    }
+    const caps = checkWebPushCapabilities();
+    if (!caps.hasServiceWorker) return;
 
     try {
         const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
         console.log('[Service Worker] Đã đăng ký thành công với scope:', registration.scope);
 
         // Nếu đã từng cấp quyền trước đó, tự động đồng bộ subscription với máy chủ
-        if (Notification.permission === 'granted') {
+        if (caps.hasNotification && Notification.permission === 'granted' && caps.hasPushManager) {
             ensurePushSubscription().catch(e => console.warn('[Auto Push Sync]:', e.message));
         }
     } catch (err) {
@@ -2493,14 +2554,27 @@ async function refreshHelpPushUI() {
     const guideBox = $('#helpPushBlockedGuide');
     if (!badge.length) return;
 
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-        badge.css({ background: '#f8f9fa', color: '#5f6368', border: '1px solid #e8eaed' })
-            .html('<i class="fa fa-info-circle" style="color: #1a73e8;"></i> <strong>Thông báo trong web đang hoạt động:</strong> Trình duyệt này hỗ trợ đầy đủ chuông thông báo & âm thanh trong web. (Tính năng Web Push ngoài màn hình khi tắt web yêu cầu HTTPS hoặc duyệt trên máy tính qua localhost).');
+    const caps = checkWebPushCapabilities();
+
+    // 1. Kiểm tra môi trường iOS chưa thêm vào Màn hình chính
+    if (caps.isIOS && !caps.isStandalone) {
+        badge.css({ background: '#fff8e1', color: '#b06000', border: '1px solid #ffe082' })
+            .html('<i class="fa fa-apple"></i> <strong>Lưu ý cho iPhone:</strong> Trên iOS, để nhận thông báo khi đóng web bạn hãy bấm nút <strong>Chia sẻ (Share) <i class="fa fa-share-square-o"></i></strong> trong Safari rồi chọn <strong>"Thêm vào MH chính" (Add to Home Screen)</strong>.');
         if (toggleWrapper.length) toggleWrapper.hide();
         if (guideBox.length) guideBox.hide();
         return;
     }
 
+    // 2. Trình duyệt không hỗ trợ Service Worker / Push / Notification
+    if (!caps.isSupported) {
+        badge.css({ background: '#f8f9fa', color: '#5f6368', border: '1px solid #e8eaed' })
+            .html('<i class="fa fa-info-circle" style="color: #1a73e8;"></i> <strong>Thông báo chuông trong web đang hoạt động:</strong> Trình duyệt này hỗ trợ đầy đủ chuông báo & âm thanh khi mở web. (Web Push ngoài màn hình khi đóng web yêu cầu Chrome, Safari PWA hoặc Edge có hỗ trợ Service Worker).');
+        if (toggleWrapper.length) toggleWrapper.hide();
+        if (guideBox.length) guideBox.hide();
+        return;
+    }
+
+    // 3. Quyền thông báo bị chặn
     if (Notification.permission === 'denied') {
         badge.css({ background: '#fce8e6', color: '#d93025', border: '1px solid #fad2cf' })
             .html('<i class="fa fa-ban"></i> <strong>Quyền thông báo đang bị chặn:</strong> Trình duyệt chưa cấp quyền hiển thị thông báo ngoài màn hình.');
@@ -2512,17 +2586,27 @@ async function refreshHelpPushUI() {
         return;
     }
 
+    // 4. Kiểm tra subscription thực tế
     try {
-        const registration = await navigator.serviceWorker.ready;
+        const registration = await getServiceWorkerReadyWithTimeout(3000);
         const subscription = await registration.pushManager.getSubscription();
 
         if (subscription && Notification.permission === 'granted') {
             badge.css({ background: '#e6f4ea', color: '#137333', border: '1px solid #ceead6' })
-                .html('<i class="fa fa-check-circle"></i> <strong>Đang hoạt động:</strong> Bạn sẽ nhận được thông báo ngoài màn hình máy tính ngay cả khi đóng hoàn toàn trang web.');
+                .html('<i class="fa fa-check-circle"></i> <strong>Đang hoạt động:</strong> Thiết bị đã sẵn sàng nhận thông báo ngoài màn hình ngay cả khi đóng web.');
             if (toggleWrapper.length) toggleWrapper.show();
             btnToggle.removeClass('btn-help-action-primary')
                 .css({ background: '#f1f3f4', color: '#5f6368', border: '1px solid #dadce0' })
                 .html('<i class="fa fa-bell-slash-o"></i> Tắt thông báo ngoài màn hình')
+                .prop('disabled', false);
+            if (guideBox.length) guideBox.hide();
+        } else if (Notification.permission === 'granted') {
+            badge.css({ background: '#e8f0fe', color: '#1a73e8', border: '1px solid #d2e3fc' })
+                .html('<i class="fa fa-check"></i> <strong>Đã cấp quyền:</strong> Bấm nút bên dưới để đồng bộ nhận thông báo hạn chót ngoài màn hình.');
+            if (toggleWrapper.length) toggleWrapper.show();
+            btnToggle.addClass('btn-help-action-primary')
+                .css({ background: '#1a73e8', color: '#ffffff', border: 'none' })
+                .html('<i class="fa fa-bell"></i> Kết nối thông báo thiết bị')
                 .prop('disabled', false);
             if (guideBox.length) guideBox.hide();
         } else {
@@ -2539,20 +2623,28 @@ async function refreshHelpPushUI() {
         badge.css({ background: '#f8f9fa', color: '#5f6368', border: '1px solid #dadce0' })
             .html('<i class="fa fa-info-circle"></i> Bấm nút bên dưới để cấp quyền thông báo ngoài màn hình.');
         if (toggleWrapper.length) toggleWrapper.show();
-        btnToggle.show();
+        btnToggle.addClass('btn-help-action-primary')
+            .css({ background: '#1a73e8', color: '#ffffff', border: 'none' })
+            .html('<i class="fa fa-bell"></i> Bật thông báo trên thiết bị')
+            .prop('disabled', false);
         if (guideBox.length) guideBox.hide();
     }
 }
 window.refreshHelpPushUI = refreshHelpPushUI;
 
 async function actionTogglePushFromHelp() {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    const caps = checkWebPushCapabilities();
+    if (!caps.isSupported) {
+        if (caps.isIOS && !caps.isStandalone) {
+            if (typeof toastr !== 'undefined') toastr.warning('Trên iPhone, vui lòng chọn Chia sẻ -> Thêm vào MH chính để bật thông báo!');
+            return;
+        }
         if (typeof toastr !== 'undefined') toastr.error('Trình duyệt không hỗ trợ Web Push ngoài màn hình');
         return;
     }
 
     try {
-        const registration = await navigator.serviceWorker.ready;
+        const registration = await getServiceWorkerReadyWithTimeout(3500);
         const currentSub = await registration.pushManager.getSubscription();
 
         if (currentSub) {
@@ -2583,67 +2675,12 @@ window.actionTogglePushFromHelp = actionTogglePushFromHelp;
 
 let helpCountdownInterval = null;
 
-// Thao tác Test thông báo (Đếm ngược 10s & Bắn thông báo hệ thống ngoài màn hình khi đóng web)
-async function actionTestNotification10s() {
+function startHelpCountdown(totalSeconds = 10) {
     const btn = $('#btnTestHelpPush');
-    if (btn.prop('disabled')) return;
-
-    // Kiểm tra hỗ trợ trình duyệt
-    const isPushSupported = ('serviceWorker' in navigator) && ('PushManager' in window);
-
-    let sub = null;
-    if (isPushSupported) {
-        btn.prop('disabled', true).html('<i class="fa fa-circle-o-notch fa-spin"></i> Đang kết nối máy chủ...');
-        try {
-            sub = await ensurePushSubscription();
-            refreshHelpPushUI();
-        } catch (err) {
-            btn.prop('disabled', false).html('<i class="fa fa-clock-o"></i> Test thông báo (Đếm ngược 10s)');
-            if (typeof toastr !== 'undefined') {
-                toastr.error(err.message, 'Cần cấp quyền thông báo');
-            }
-            $('#helpPushBlockedGuide').show();
-            return;
-        }
-
-        // Gửi lệnh hẹn giờ 10s tới Backend Máy chủ
-        try {
-            const user = getAuthUser();
-            const res = await fetch('/api/push/test', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    delaySeconds: 10,
-                    endpoint: sub.endpoint,
-                    subscription: sub,
-                    userId: user ? user.id : null
-                })
-            }).then(r => r.json());
-
-            if (!res.success) {
-                throw new Error(res.message);
-            }
-
-            if (typeof toastr !== 'undefined') {
-                toastr.success('🚀 ĐÃ HẸN GIỜ MÁY CHỦ: Đúng 10 giây nữa MÁY TÍNH CỦA BẠN sẽ nhận được thông báo như Zalo! Hãy ĐÓNG HẲN TRANG WEB hoặc chuyển tab ngay bây giờ để thử nghiệm.', 'Máy chủ đang đếm ngược 10s', { timeOut: 9000 });
-            }
-        } catch (err) {
-            btn.prop('disabled', false).html('<i class="fa fa-clock-o"></i> Test thông báo (Đếm ngược 10s)');
-            if (typeof toastr !== 'undefined') {
-                toastr.error('Lỗi gửi lệnh hẹn giờ tới máy chủ: ' + err.message);
-            }
-            return;
-        }
-    } else {
-        if (typeof toastr !== 'undefined') {
-            toastr.info('⏳ Thiết bị đang duyệt không hỗ trợ Web Push chạy ngầm (cần HTTPS hoặc duyệt trên máy tính qua localhost). Hệ thống sẽ thử nghiệm thông báo chuông sau 10s!', 'Thông báo', { timeOut: 7000 });
-        }
-    }
-
     btn.prop('disabled', true);
     $('#helpTestCountdownNotice').show();
 
-    let count = 10;
+    let count = totalSeconds;
     $('#helpCountdownSeconds').text(count);
     btn.html(`<i class="fa fa-hourglass-half fa-spin"></i> Đang chờ ${count}s...`);
 
@@ -2667,7 +2704,7 @@ async function actionTestNotification10s() {
                 dueDate: new Date(Date.now() + 25 * 60 * 1000).toISOString()
             });
 
-            // 2. Bắn toastr nổi bật trên màn hình
+            // 2. Bắn toastr nổi bật trên màn hình nếu web còn mở
             if (typeof toastr !== 'undefined') {
                 toastr.error('🚨 [Thử nghiệm] Hạn chót còn 25 phút! Hệ thống đã phát thông báo vào Chuông.', 'Thông báo nhắc hẹn', { timeOut: 8000 });
             }
@@ -2679,6 +2716,70 @@ async function actionTestNotification10s() {
             }, 3000);
         }
     }, 1000);
+}
+
+// Thao tác Test thông báo (Đếm ngược 10s & Bắn thông báo hệ thống ngoài màn hình khi đóng web)
+async function actionTestNotification10s() {
+    const btn = $('#btnTestHelpPush');
+    if (btn.prop('disabled')) return;
+
+    const caps = checkWebPushCapabilities();
+
+    if (!caps.isSupported) {
+        if (caps.isIOS && !caps.isStandalone) {
+            if (typeof toastr !== 'undefined') {
+                toastr.warning('Trên iPhone (iOS), bạn hãy bấm nút Chia sẻ -> "Thêm vào MH chính" để nhận thông báo đẩy khi đóng web nhé!', 'Hướng dẫn iOS');
+            }
+        } else {
+            if (typeof toastr !== 'undefined') {
+                toastr.info('Trình duyệt không hỗ trợ Web Push ngoài màn hình. Hệ thống sẽ thử nghiệm thông báo chuông sau 10s!', 'Thông báo');
+            }
+        }
+        startHelpCountdown(10);
+        return;
+    }
+
+    btn.prop('disabled', true).html('<i class="fa fa-circle-o-notch fa-spin"></i> Đang chuẩn bị...');
+
+    let sub = null;
+    try {
+        sub = await ensurePushSubscription();
+        refreshHelpPushUI();
+    } catch (err) {
+        btn.prop('disabled', false).html('<i class="fa fa-clock-o"></i> Test thông báo (Đếm ngược 10s)');
+        if (typeof toastr !== 'undefined') {
+            toastr.error(err.message, 'Cần cấp quyền thông báo');
+        }
+        $('#helpPushBlockedGuide').show();
+        return;
+    }
+
+    // Bắt đầu đếm ngược 10s trên giao diện ngay lập tức
+    startHelpCountdown(10);
+
+    if (typeof toastr !== 'undefined') {
+        toastr.success('🚀 ĐÃ HẸN GIỜ: Đúng 10 giây nữa THIẾT BỊ SẼ NHẬN ĐƯỢC THÔNG BÁO! Bạn hãy ĐÓNG HẲN TRANG WEB hoặc chuyển sang tab khác ngay bây giờ để thử nghiệm nhé!', 'Đang đếm ngược 10 giây', { timeOut: 9000 });
+    }
+
+    // Gửi lệnh hẹn giờ tới máy chủ với keepalive: true để không bị ngắt khi đóng web
+    const user = getAuthUser();
+    fetch('/api/push/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        keepalive: true,
+        body: JSON.stringify({
+            delaySeconds: 10,
+            endpoint: sub.endpoint,
+            subscription: sub,
+            userId: user ? user.id : null
+        })
+    }).then(r => r.json()).then(res => {
+        if (!res.success) {
+            console.warn('[Push Test Warning]:', res.message);
+        }
+    }).catch(err => {
+        console.warn('[Push Test Error]:', err.message);
+    });
 }
 window.actionTestNotification10s = actionTestNotification10s;
 // Giữ alias tương thích
