@@ -55,6 +55,9 @@ function sanitizeDueDate(val) {
                         userId: item.user_id || null,
                         userName: item.user_name || null,
                         assignees: item.assignees || 'all',
+                        groupName: item.group_name || null,
+                        groupLink: item.group_link || null,
+                        description: item.description || null,
                         isCompleted: item.is_completed ? 1 : 0
                     }
                 });
@@ -75,6 +78,9 @@ function sanitizeDueDate(val) {
                     userId: item.user_id || null,
                     userName: item.user_name || null,
                     assignees: item.assignees || 'all',
+                    groupName: item.group_name || null,
+                    groupLink: item.group_link || null,
+                    description: item.description || null,
                     isCompleted: item.is_completed ? 1 : 0
                 }));
 
@@ -112,6 +118,9 @@ function sanitizeDueDate(val) {
             if (body.userId) payload.user_id = body.userId;
             if (body.userName) payload.user_name = body.userName;
             if (body.assignees) payload.assignees = typeof body.assignees === 'object' ? JSON.stringify(body.assignees) : body.assignees;
+            if (body.groupName !== undefined) payload.group_name = body.groupName;
+            if (body.groupLink !== undefined) payload.group_link = body.groupLink;
+            if (body.description !== undefined) payload.description = body.description;
 
             const resp = await fetch(`${SUPABASE_URL}/rest/v1/deadlines`, {
                 method: 'POST',
@@ -132,6 +141,9 @@ function sanitizeDueDate(val) {
                     userId: created.user_id || body.userId || null,
                     userName: created.user_name || body.userName || null,
                     assignees: created.assignees || body.assignees || 'all',
+                    groupName: created.group_name || body.groupName || null,
+                    groupLink: created.group_link || body.groupLink || null,
+                    description: created.description || body.description || null,
                     isCompleted: created.is_completed ? 1 : 0
                 }
             });
@@ -149,6 +161,9 @@ function sanitizeDueDate(val) {
             if (body.userId !== undefined) payload.user_id = body.userId;
             if (body.userName !== undefined) payload.user_name = body.userName;
             if (body.assignees !== undefined) payload.assignees = typeof body.assignees === 'object' ? JSON.stringify(body.assignees) : body.assignees;
+            if (body.groupName !== undefined) payload.group_name = body.groupName;
+            if (body.groupLink !== undefined) payload.group_link = body.groupLink;
+            if (body.description !== undefined) payload.description = body.description;
             if (body.isCompleted !== undefined) payload.is_completed = body.isCompleted ? 1 : 0;
             payload.updated_at = new Date().toISOString();
 
@@ -171,6 +186,9 @@ function sanitizeDueDate(val) {
                     userId: updated.user_id || null,
                     userName: updated.user_name || null,
                     assignees: updated.assignees || 'all',
+                    groupName: updated.group_name || null,
+                    groupLink: updated.group_link || null,
+                    description: updated.description || null,
                     isCompleted: updated.is_completed ? 1 : 0
                 }
             });

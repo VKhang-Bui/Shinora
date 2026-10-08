@@ -203,7 +203,29 @@ async function loadRegisteredUsers() {
         const result = await res.json();
         if (result.success && Array.isArray(result.data)) {
             cachedRegisteredUsers = result.data;
-            renderAssigneesList();
+            // Nếu đang trong modal chỉnh sửa deadline: giữ nguyên danh sách của item đang chỉnh sửa
+            if (editingDeadlineId) {
+                const item = currentDeadlines.find(d => d.id === editingDeadlineId);
+                if (item && item.category === 'group' && item.assignees && item.assignees !== 'all' && item.assignees !== '["all"]') {
+                    let parsed = [];
+                    try { parsed = typeof item.assignees === 'string' ? JSON.parse(item.assignees) : item.assignees; } catch(e) { parsed = [item.assignees]; }
+                    renderAssigneesList(Array.isArray(parsed) ? parsed : [parsed]);
+                    return;
+                }
+            }
+            // Nếu người dùng đã tự tay tick chọn ô nào đó trong modal đang mở: bảo toàn ô đang tick
+            const checkedVals = [];
+            $('.assignee-item:checked').each(function () {
+                checkedVals.push($(this).val());
+            });
+            if (checkedVals.length > 0) {
+                renderAssigneesList(checkedVals);
+            } else if ($('#checkAssignAll').length && !$('#checkAssignAll').is(':checked')) {
+                // Đang mở mà đã bỏ tick "Toàn bộ nhóm" thì không tự động tick hết
+                renderAssigneesList([]);
+            } else {
+                renderAssigneesList();
+            }
         }
     } catch (e) {
         console.warn('Lỗi lấy danh sách thành viên:', e);
@@ -216,7 +238,7 @@ function renderAssigneesList(selectedIds = null) {
     const currentUser = getAuthUser();
 
     let list = [...cachedRegisteredUsers];
-    if (currentUser && !list.some(u => u.id === currentUser.id)) {
+    if (currentUser && !list.some(u => String(u.id).toLowerCase() === String(currentUser.id).toLowerCase())) {
         list.push({ id: currentUser.id, name: currentUser.name });
     }
 
@@ -225,9 +247,23 @@ function renderAssigneesList(selectedIds = null) {
         return;
     }
 
+    let normalizedSelected = null;
+    if (Array.isArray(selectedIds)) {
+        normalizedSelected = selectedIds.map(s => String(s).trim().toLowerCase());
+    }
+
     let html = '';
     list.forEach(u => {
-        const isChecked = selectedIds ? (selectedIds.includes(u.id) || selectedIds.includes(u.name)) : true;
+        const uIdLower = String(u.id).trim().toLowerCase();
+        const uNameLower = String(u.name).trim().toLowerCase();
+        let isChecked = false;
+        if (normalizedSelected !== null) {
+            isChecked = normalizedSelected.includes(uIdLower) || normalizedSelected.includes(uNameLower);
+        } else {
+            // Khi selectedIds === null (ví dụ khi tick "Toàn bộ nhóm" hoặc tạo mới lần đầu)
+            isChecked = $('#checkAssignAll').length === 0 || $('#checkAssignAll').is(':checked');
+        }
+
         html += `
             <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; background: white; border: 1px solid #dadce0; border-radius: 4px; padding: 2px 8px; cursor: pointer; user-select: none; margin: 0;">
                 <input type="checkbox" class="assignee-item" value="${escapeHtml(u.id)}" data-name="${escapeHtml(u.name)}" ${isChecked ? 'checked' : ''} style="margin: 0; vertical-align: middle;">
@@ -244,7 +280,10 @@ function toggleAssignAll(isChecked) {
         $('.assignee-item').prop('checked', true);
     } else {
         $('#assigneesContainer').show();
-        loadRegisteredUsers();
+        // Giữ nguyên các ô đang được chọn hoặc render nếu chưa có
+        if (!$('#assigneesList label').length) {
+            renderAssigneesList([]);
+        }
     }
 }
 
@@ -514,7 +553,8 @@ async function optimisticCreateDeadline(dlData) {
         if (result.success && result.data) {
             setPendingCache(getPendingCache().filter(p => p.id !== tempId));
             const confirmed = getConfirmedCache().filter(c => c.id !== tempId);
-            confirmed.push(result.data);
+            const mergedCreate = { ...enrichedData, ...result.data };
+            confirmed.push(mergedCreate);
             setConfirmedCache(confirmed);
 
             currentDeadlines = computeEffectiveDeadlines();
@@ -522,7 +562,7 @@ async function optimisticCreateDeadline(dlData) {
             if (typeof toastr !== 'undefined') {
                 toastr.success(`Đã lưu "${dlData.title}" thành công vào CSDL!`);
             }
-            return result.data;
+            return mergedCreate;
         } else {
             throw new Error(result.message || 'Lỗi server');
         }
@@ -587,13 +627,14 @@ async function optimisticUpdateDeadline(id, dlData) {
         if (result.success && result.data) {
             setPendingCache(getPendingCache().filter(p => p.id !== id));
             const confirmed = getConfirmedCache().filter(c => c.id !== id);
-            confirmed.push(result.data);
+            const mergedUpdate = { ...dlData, ...result.data };
+            confirmed.push(mergedUpdate);
             setConfirmedCache(confirmed);
 
             currentDeadlines = computeEffectiveDeadlines();
             renderCurrentView();
             if (typeof toastr !== 'undefined') toastr.success(`Đã cập nhật deadline thành công!`);
-            return result.data;
+            return mergedUpdate;
         } else {
             throw new Error(result.message || 'Lỗi server');
         }
@@ -1753,7 +1794,9 @@ function setModalCategory(category) {
         $('#tabBtnGroup').css({ 'background': '#c2e7ff', 'color': '#001d35' });
         $('#noticePersonal').hide();
         $('#noticeGroup').show();
-        loadRegisteredUsers();
+        if (!cachedRegisteredUsers || cachedRegisteredUsers.length === 0) {
+            loadRegisteredUsers();
+        }
     }
 }
 
