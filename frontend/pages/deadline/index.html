@@ -20,7 +20,7 @@
     <link rel="stylesheet" type="text/css" href="../../shared/css/toastr.min.css">
 
     <!-- CSS RIÊNG CỦA MODULE DEADLINE TRACKER -->
-    <link rel="stylesheet" type="text/css" href="./deadline.css?v=1.0.5">
+    <link rel="stylesheet" type="text/css" href="./deadline.css?v=1.0.6">
 </head>
 <body>
     <div id="focus-overlay"></div>
@@ -50,8 +50,32 @@
                 </div>
             </div>
 
-            <!-- KHỐI ĐĂNG NHẬP / TÀI KHOẢN NẰM CỐ ĐỊNH Ở GÓC TRÊN BÊN PHẢI -->
+            <!-- KHỐI CHUÔNG THÔNG BÁO VÀ ĐĂNG NHẬP / TÀI KHOẢN NẰM Ở GÓC TRÊN BÊN PHẢI -->
             <div id="authHeaderContainer" style="margin-left: auto; display: flex; align-items: center; gap: 10px; position: relative;">
+                <!-- CỤM CHUÔNG THÔNG BÁO (NOTIFICATION CENTER) -->
+                <div id="notifBellWrapper" style="position: relative; display: flex; align-items: center;">
+                    <button type="button" id="btnNotifBell" onclick="toggleNotificationDropdown(event)" class="notif-bell-btn" title="Thông báo nhắc hẹn">
+                        <i class="fa fa-bell-o"></i>
+                        <span id="notifBadge" class="notif-badge" style="display: none;">0</span>
+                    </button>
+
+                    <!-- DROPDOWN DANH SÁCH THÔNG BÁO -->
+                    <div id="notificationDropdown" style="display: none; position: absolute; top: calc(100% + 8px); right: 0; width: 330px; max-width: 90vw; background: #ffffff; border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,0.18); border: 1px solid #dadce0; z-index: 100000; overflow: hidden;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid #f1f3f4; background: #fafafa;">
+                            <div style="font-weight: 700; font-size: 13px; color: #202124; display: flex; align-items: center; gap: 6px;">
+                                <i class="fa fa-bell" style="color: #1a73e8; font-size: 13px;"></i>
+                                <span>Thông báo nhắc hẹn</span>
+                            </div>
+                            <button type="button" onclick="clearAllNotifications(event)" style="background: none; border: none; color: #1a73e8; font-size: 11.5px; cursor: pointer; padding: 2px 4px; font-weight: 600;" title="Đánh dấu tất cả là đã đọc">
+                                Đã đọc hết
+                            </button>
+                        </div>
+                        <div id="notificationList" style="max-height: 320px; overflow-y: auto;">
+                            <!-- Danh sách render động từ JS -->
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Trạng thái Chưa đăng nhập: Chỉ hiển thị nút Đăng nhập gọn gàng -->
                 <div id="authGuestView" style="display: flex; align-items: center;">
                     <button type="button" class="btn btn-action" onclick="openLoginModal()" style="background: #1a73e8; color: #fff; font-size: 12.5px; padding: 5px 14px; height: 32px; display: inline-flex; align-items: center; border-radius: 6px; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.15); border: none; cursor: pointer;">
@@ -333,7 +357,7 @@
                 <ul style="display: flex; flex-wrap: wrap; align-items: center; gap: 24px; padding: 0; margin: 0; list-style: none;">
                     <li style="display: flex; align-items: center; gap: 8px;">
                         <span style="width: 16px; height: 16px; background-color: #adb5bd; border: 1px solid #6c757d; border-radius: 3px; display: inline-block;"></span>
-                        <label style="margin: 0; font-size: 13px; font-weight: 600; color: #495057;">pass</label>
+                        <label style="margin: 0; font-size: 13px; font-weight: 600; color: #495057;">khác</label>
                     </li>
                     <li style="display: flex; align-items: center; gap: 8px;">
                         <span style="width: 16px; height: 16px; background-color: #ffa39e; border: 1px solid #f5222d; border-radius: 3px; display: inline-block;"></span>
@@ -460,14 +484,35 @@
             </div>
         </div>
 
-        <!-- HÀNG NÚT DƯỚI CÙNG: HỦY VÀ LƯU / CẬP NHẬT -->
-        <div style="display: flex; justify-content: flex-end; align-items: center; gap: 10px;">
-            <button type="button" onclick="closeCreateDeadlineModal()" style="background: none; border: none; padding: 7px 16px; font-size: 13px; font-weight: 600; color: #1a73e8; cursor: pointer; border-radius: 4px;">
-                Hủy
-            </button>
-            <button type="button" id="btnModalSave" onclick="saveNewDeadlineFromModal()" style="background: #1a73e8; border: none; padding: 7px 22px; font-size: 13px; font-weight: 600; color: #ffffff; border-radius: 4px; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">
-                Lưu
-            </button>
+        <!-- NHÓM / KÊNH TRAO ĐỔI (ZALO, TELEGRAM, TEAMS...) -->
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 14px;">
+            <i class="fa fa-tag" style="font-size: 16px; color: #5f6368; width: 22px; text-align: center;"></i>
+            <div style="flex: 1; display: flex; gap: 8px;">
+                <input type="text" id="modalInputGroupName" placeholder="Tên nhóm / Không gian (tùy chọn)" style="flex: 1; padding: 6px 10px; border: 1px solid #dadce0; border-radius: 4px; font-size: 12.5px; outline: none; background: #fff;">
+                <input type="url" id="modalInputGroupLink" placeholder="Link nhóm (tùy chọn)" style="flex: 1; padding: 6px 10px; border: 1px solid #dadce0; border-radius: 4px; font-size: 12.5px; outline: none; background: #fff;">
+            </div>
+        </div>
+
+        <!-- MÔ TẢ CHI TIẾT / GHI CHÚ -->
+        <div style="display: flex; align-items: flex-start; gap: 10px; margin-bottom: 20px;">
+            <i class="fa fa-align-left" style="font-size: 16px; color: #5f6368; width: 22px; text-align: center; margin-top: 5px;"></i>
+            <textarea id="modalInputDescription" placeholder="Thêm mô tả chi tiết, ghi chú công việc (tùy chọn)..." rows="2" style="flex: 1; padding: 6px 10px; border: 1px solid #dadce0; border-radius: 4px; font-size: 12.5px; outline: none; background: #fff; resize: vertical; min-height: 48px; font-family: inherit;"></textarea>
+        </div>
+
+        <!-- HÀNG NÚT DƯỚI CÙNG: DẤU TÍCH XONG + HỦY VÀ LƯU / CẬP NHẬT -->
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+            <label style="cursor: pointer; display: inline-flex; align-items: center; gap: 6px; margin: 0; user-select: none;" title="Đánh dấu đã xong / lịch trình">
+                <input type="checkbox" id="modalInputCompleted" style="cursor: pointer; width: 16px; height: 16px; accent-color: #1a73e8;">
+                <i class="fa fa-check" style="font-size: 13px; color: #5f6368;"></i>
+            </label>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <button type="button" onclick="closeCreateDeadlineModal()" style="background: none; border: none; padding: 7px 16px; font-size: 13px; font-weight: 600; color: #1a73e8; cursor: pointer; border-radius: 4px;">
+                    Hủy
+                </button>
+                <button type="button" id="btnModalSave" onclick="saveNewDeadlineFromModal()" style="background: #1a73e8; border: none; padding: 7px 22px; font-size: 13px; font-weight: 600; color: #ffffff; border-radius: 4px; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">
+                    Lưu
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -561,11 +606,15 @@
         </div>
     </div>
 
-    <!-- PHÂN LOẠI & THÀNH VIÊN -->
-    <div style="display: flex; flex-direction: column; gap: 6px; padding: 4px 2px 4px 32px; font-size: 13px; color: #444746;">
+    <!-- PHÂN LOẠI, NHÓM, THÀNH VIÊN & MÔ TẢ -->
+    <div style="display: flex; flex-direction: column; gap: 7px; padding: 4px 2px 4px 32px; font-size: 13px; color: #444746;">
         <div style="display: flex; align-items: center; gap: 10px;">
             <i id="detailCategoryIcon" class="fa fa-user" style="font-size: 15px; color: #5f6368; width: 16px; text-align: center;"></i>
             <span id="detailCategoryText" style="font-weight: 500;">Cá nhân</span>
+        </div>
+        <div id="detailGroupRow" style="display: none; align-items: center; gap: 10px; font-size: 12.5px;">
+            <i class="fa fa-tag" style="width: 16px; text-align: center; color: #1a73e8;"></i>
+            <div id="detailGroupContent" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;"></div>
         </div>
         <div id="detailAssigneesRow" style="display: flex; align-items: center; gap: 10px; font-size: 12px; color: #5f6368;">
             <i class="fa fa-users" style="width: 16px; text-align: center;"></i>
@@ -574,6 +623,10 @@
         <div id="detailCreatorRow" style="display: flex; align-items: center; gap: 10px; font-size: 11.5px; color: #70757a;">
             <i class="fa fa-pencil-square-o" style="width: 16px; text-align: center;"></i>
             <span id="detailCreatorText">Tạo bởi: Bạn</span>
+        </div>
+        <div id="detailDescriptionRow" style="display: none; align-items: flex-start; gap: 8px; margin-top: 4px; font-size: 12.5px; color: #444746; padding: 6px 10px; background: #f8f9fa; border-radius: 6px;">
+            <i class="fa fa-align-left" style="color: #5f6368; margin-top: 2px; width: 16px; text-align: center; flex-shrink: 0;"></i>
+            <div id="detailDescriptionText" style="flex: 1; white-space: pre-line; word-break: break-word;"></div>
         </div>
     </div>
 </div>
@@ -585,7 +638,7 @@
 <script type="text/javascript" src="../../shared/js/toastr.min.js"></script>
 <script type="text/javascript" src="../../shared/js/bootstrap.bundle.min.js"></script>
 <script type="text/javascript" src="../../shared/js/main.js"></script>
-<script type="text/javascript" src="./deadline.js?v=1.0.5"></script>
+<script type="text/javascript" src="./deadline.js?v=1.0.7"></script>
 
 </body>
 </html>

@@ -70,7 +70,7 @@ function calculateDaysLeft(dueDateStr, baseDate) {
 }
 
 function getDeadlineColorStyle(daysLeft, isCompleted = false) {
-    if (isCompleted || daysLeft < 0) return { label: "pass", bg: "#e9ecef" };
+    if (isCompleted || daysLeft < 0) return { label: "khác", bg: "#e9ecef" };
     if (daysLeft <= 3) return { label: "3 ngày", bg: "#ffa39e" };
     if (daysLeft <= 7) return { label: "1 tuần", bg: "#ffd591" };
     if (daysLeft <= 21) return { label: "3 tuần", bg: "#ffe58f" };
@@ -177,11 +177,51 @@ async function runTestSuite() {
     assert(resPut.statusCode === 200 && resPut.json.data.title === 'Báo cáo Kiểm thử Tự động (ĐÃ CẬP NHẬT)', 'PUT cập nhật tiêu đề thành công');
     assert(resPut.json.data.isCompleted === 1, 'PUT cập nhật isCompleted = 1 thành công');
 
+    // Test 3.5b: Toggle bỏ đánh dấu xong (isCompleted = 0)
+    const resUncheck = await request({
+        host: HOST, port: PORT, path: `/api/deadlines/${encodeURIComponent(createdId)}`, method: 'PUT',
+        headers: { 'Content-Type': 'application/json' }
+    }, { isCompleted: 0 });
+    assert(resUncheck.statusCode === 200 && resUncheck.json.data.isCompleted === 0, 'PUT toggle bỏ đánh dấu xong (isCompleted = 0) thành công');
+
     // Test 3.6: Xóa deadline (DELETE)
     const resDel = await request({
         host: HOST, port: PORT, path: `/api/deadlines/${encodeURIComponent(createdId)}`, method: 'DELETE'
     });
     assert(resDel.statusCode === 200 && resDel.json.success === true, 'DELETE xóa thành công HTTP 200');
+
+    // Test 3.7: Tạo deadline có kèm Nhóm làm việc & Mô tả chi tiết (groupName, groupLink, description)
+    const resGroupDl = await request({
+        host: HOST, port: PORT, path: '/api/deadlines', method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    }, {
+        title: 'Bảo vệ Đồ Án Mạng Máy Tính',
+        dueDate: '2026-10-25T14:00:00',
+        session: 'chieu',
+        category: 'group',
+        groupName: 'Nhóm 3 - An toàn thông tin',
+        groupLink: 'https://zalo.me/g/testgroup123',
+        description: 'Chuẩn bị slide thuyết trình và demo kịch bản tấn công thử nghiệm.'
+    });
+    assert(resGroupDl.statusCode === 201 && resGroupDl.json.success === true, 'POST deadline có groupName, groupLink, description thành công HTTP 201');
+    const groupDlId = resGroupDl.json.data.id;
+    assert(resGroupDl.json.data.groupName === 'Nhóm 3 - An toàn thông tin', 'Lưu chính xác tên nhóm: "Nhóm 3 - An toàn thông tin"');
+    assert(resGroupDl.json.data.groupLink === 'https://zalo.me/g/testgroup123', 'Lưu chính xác link nhóm');
+    assert(resGroupDl.json.data.description.includes('demo kịch bản'), 'Lưu chính xác mô tả công việc');
+
+    // Test 3.8: Cập nhật tên nhóm và mô tả qua PUT
+    const resPutGroup = await request({
+        host: HOST, port: PORT, path: `/api/deadlines/${encodeURIComponent(groupDlId)}`, method: 'PUT',
+        headers: { 'Content-Type': 'application/json' }
+    }, {
+        groupName: 'Nhóm Đồ Án Kỹ Thuật Mạng',
+        description: 'Đã cập nhật: Demo trên máy ảo Lab.'
+    });
+    assert(resPutGroup.statusCode === 200 && resPutGroup.json.data.groupName === 'Nhóm Đồ Án Kỹ Thuật Mạng', 'PUT cập nhật groupName thành công');
+    assert(resPutGroup.json.data.description === 'Đã cập nhật: Demo trên máy ảo Lab.', 'PUT cập nhật description thành công');
+
+    // Xóa bản ghi test nhóm
+    await request({ host: HOST, port: PORT, path: `/api/deadlines/${encodeURIComponent(groupDlId)}`, method: 'DELETE' });
 
     // -------------------------------------------------------------
     // SUITE 4: KIỂM THỬ THÔNG BÁO LỖI & RÀNG BUỘC (ERROR & VALIDATION)
@@ -229,10 +269,10 @@ async function runTestSuite() {
 
     const baseToday = new Date(2026, 9, 5); // 05/10/2026
 
-    // Test 5.1: Quá hạn (< 0 ngày) -> Màu Xám (pass)
+    // Test 5.1: Quá hạn (< 0 ngày) -> Màu Xám (khác)
     const daysPass = calculateDaysLeft('2026-10-02T09:00:00', baseToday);
     const colorPass = getDeadlineColorStyle(daysPass, false);
-    assert(colorPass.label === 'pass' && colorPass.bg === '#e9ecef', 'Quá hạn (-3 ngày) -> Gán màu XÁM [pass]');
+    assert(colorPass.label === 'khác' && colorPass.bg === '#e9ecef', 'Quá hạn (-3 ngày) -> Gán màu XÁM [khác]');
 
     // Test 5.2: Gấp (<= 3 ngày) -> Màu Đỏ
     const daysRed = calculateDaysLeft('2026-10-07T20:00:00', baseToday);
@@ -256,7 +296,7 @@ async function runTestSuite() {
 
     // Test 5.6: Đã xong (isCompleted = 1) dù còn ngày -> Vẫn màu Xám
     const colorDone = getDeadlineColorStyle(10, true);
-    assert(colorDone.label === 'pass' && colorDone.bg === '#e9ecef', 'Đã hoàn thành (isCompleted = 1) -> Tự động chuyển màu XÁM [pass]');
+    assert(colorDone.label === 'khác' && colorDone.bg === '#e9ecef', 'Đã hoàn thành (isCompleted = 1) -> Tự động chuyển màu XÁM [khác]');
 
     // Test 5.7: Mô phỏng gộp 2 Phân khu Local Cache (Khu A: Confirmed + Khu B: Pending)
     const mockKhuA = [{ id: 'dl-1', title: 'Task Đã lưu', dueDate: '2026-10-10' }];

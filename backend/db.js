@@ -35,6 +35,9 @@ try {
     if (!colNames.includes('user_id')) db.exec("ALTER TABLE deadlines ADD COLUMN user_id VARCHAR(100);");
     if (!colNames.includes('user_name')) db.exec("ALTER TABLE deadlines ADD COLUMN user_name NVARCHAR(100);");
     if (!colNames.includes('assignees')) db.exec("ALTER TABLE deadlines ADD COLUMN assignees TEXT DEFAULT 'all';");
+    if (!colNames.includes('group_name')) db.exec("ALTER TABLE deadlines ADD COLUMN group_name NVARCHAR(255);");
+    if (!colNames.includes('group_link')) db.exec("ALTER TABLE deadlines ADD COLUMN group_link VARCHAR(500);");
+    if (!colNames.includes('description')) db.exec("ALTER TABLE deadlines ADD COLUMN description TEXT;");
     db.exec("CREATE INDEX IF NOT EXISTS idx_deadlines_user_id ON deadlines(user_id);");
 } catch (e) {
     // Bỏ qua nếu bảng chưa được tạo

@@ -897,3 +897,135 @@
     }
 }
 
+/* NÚT SAO CHÉP TÊN NHÓM MINI */
+.btn-copy-mini {
+    background: #f1f3f4;
+    border: 1px solid #dadce0;
+    border-radius: 4px;
+    padding: 2px 7px;
+    font-size: 11px;
+    font-weight: 500;
+    color: #444746;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.15s ease;
+    user-select: none;
+    line-height: 1.2;
+}
+.btn-copy-mini:hover {
+    background: #e8eaed;
+    color: #1f1f1f;
+    border-color: #bdc1c6;
+}
+.btn-copy-mini:active {
+    transform: scale(0.96);
+    background: #d2e3fc;
+    color: #1a73e8;
+}
+
+/* HỆ THỐNG THÔNG BÁO (NOTIFICATION CENTER) */
+.notif-bell-btn {
+    position: relative;
+    background: #ffffff;
+    border: 1px solid #dadce0;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #5f6368;
+    font-size: 15px;
+    transition: all 0.2s ease;
+    outline: none;
+    padding: 0;
+}
+.notif-bell-btn:hover {
+    background: #f8f9fa;
+    color: #1a73e8;
+    border-color: #bdc1c6;
+}
+.notif-badge {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    background: #d93025;
+    color: #ffffff;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 5px;
+    min-width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    border: 2px solid #ffffff;
+    animation: notifPulse 2.5s infinite;
+}
+@keyframes notifPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.15); }
+}
+.notif-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 9px 12px;
+    border-bottom: 1px solid #f1f3f4;
+    cursor: pointer;
+    transition: background 0.15s ease;
+    text-decoration: none;
+    color: inherit;
+}
+.notif-item:hover {
+    background: #f8f9fa;
+}
+.notif-item.urgent {
+    background: #fef7f6;
+    border-left: 3px solid #d93025;
+}
+.notif-item.urgent:hover {
+    background: #fce8e6;
+}
+.notif-item.warning {
+    background: #fefcf6;
+    border-left: 3px solid #f2994a;
+}
+.notif-item.warning:hover {
+    background: #fff8e1;
+}
+.notif-item.info {
+    border-left: 3px solid #1a73e8;
+}
+
+/* NÚT DẤU TÍCH NHỎ TRÊN THẺ DEADLINE */
+.deadline-check-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 17px;
+    height: 17px;
+    cursor: pointer;
+    border-radius: 50%;
+    transition: transform 0.15s ease, opacity 0.15s ease;
+    user-select: none;
+    flex-shrink: 0;
+    margin-right: 2px;
+}
+.deadline-check-btn:hover {
+    transform: scale(1.18);
+}
+.deadline-check-btn i {
+    font-size: 13.5px;
+    line-height: 1;
+}
+.deadline-check-btn.completed i {
+    color: #495057 !important;
+}
+
+

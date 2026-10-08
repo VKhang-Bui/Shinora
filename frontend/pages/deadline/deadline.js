@@ -3,12 +3,46 @@
  * Tối ưu hóa 2 tầng: HTTP Cache + Optimistic UI 2 Phân khu Local Cache
  */
 
-const APP_VERSION = '1.0.5';
+const APP_VERSION = '1.0.6';
 
 let currentDate = new Date(); // Mặc định thời điểm hôm nay thực tế của máy người dùng
 let todayDate = new Date();    // Mốc thời gian thực để tính toán màu sắc và độ gấp
 let currentViewMode = 'week';  // 'week' | 'month'
 let currentDeadlines = [];     // Danh sách deadline gộp từ 2 phân khu
+
+/**
+ * Chép văn bản vào bộ nhớ tạm Clipboard (Hỗ trợ cả navigator.clipboard và fallback execCommand)
+ */
+function copyTextToClipboard(text) {
+    if (!text) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+            if (typeof toastr !== 'undefined') toastr.success(`Đã sao chép: "${text}"`, '', { timeOut: 2000 });
+        }).catch(() => {
+            fallbackCopyText(text);
+        });
+    } else {
+        fallbackCopyText(text);
+    }
+}
+function fallbackCopyText(text) {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.position = "fixed";
+    textArea.style.left = "-9999px";
+    textArea.style.top = "-9999px";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+        document.execCommand('copy');
+        if (typeof toastr !== 'undefined') toastr.success(`Đã sao chép: "${text}"`, '', { timeOut: 2000 });
+    } catch (err) {
+        if (typeof toastr !== 'undefined') toastr.warning("Không thể sao chép tự động!");
+    }
+    document.body.removeChild(textArea);
+}
+window.copyTextToClipboard = copyTextToClipboard;
 
 /**
  * Chuyển đổi chuỗi ngày hạn chót sang đối tượng Date chuẩn theo giờ địa phương (Wall-clock time)
@@ -99,6 +133,9 @@ window.closeUserDropdown = closeUserDropdown;
 $(document).on('click', function(e) {
     if (!$(e.target).closest('#authUserView').length) {
         closeUserDropdown();
+    }
+    if (!$(e.target).closest('#notifBellWrapper').length) {
+        closeNotificationDropdown();
     }
 });
 
@@ -366,6 +403,7 @@ async function fetchDeadlinesFromDb(keyword = '') {
         currentDeadlines = currentDeadlines.filter(d => d.title && d.title.toLowerCase().includes(kw));
     }
     renderCurrentView();
+    checkDeadlineReminders();
 
     // Nếu là Khách: Tuyệt đối không gửi lên server CSDL
     if (!user) {
@@ -398,6 +436,7 @@ async function fetchDeadlinesFromDb(keyword = '') {
                 currentDeadlines = currentDeadlines.filter(d => d.title && d.title.toLowerCase().includes(kw));
             }
             renderCurrentView();
+            checkDeadlineReminders();
         }
     } catch (err) {
         console.warn('[Offline Mode / Revalidate Warning]: Đang sử dụng bộ nhớ đệm cục bộ.', err);
@@ -413,7 +452,8 @@ async function optimisticCreateDeadline(dlData) {
         id: tempId,
         userId: user ? user.id : null,
         userName: user ? user.name : 'Khách',
-        assignees: dlData.assignees || 'all'
+        assignees: dlData.assignees || 'all',
+        isCompleted: dlData.isCompleted ? 1 : 0
     };
 
     // 1. NẾU LÀ KHÁCH: LƯU TRỰC TIẾP VÀO LOCAL CACHE KHÁCH (KHÔNG GỬI SERVER)
@@ -463,7 +503,11 @@ async function optimisticCreateDeadline(dlData) {
                 category: dlData.category,
                 userId: enrichedData.userId,
                 userName: enrichedData.userName,
-                assignees: enrichedData.assignees
+                assignees: enrichedData.assignees,
+                groupName: dlData.groupName || null,
+                groupLink: dlData.groupLink || null,
+                description: dlData.description || null,
+                isCompleted: dlData.isCompleted ? 1 : 0
             })
         });
         const result = await res.json();
@@ -662,7 +706,7 @@ function calculateDaysLeft(dueDateStr, baseDate) {
 function getDeadlineColorStyle(daysLeft, isCompleted = false) {
     // 1. Quá hạn (< 0 ngày) hoặc Đã xong -> Màu XÁM
     if (isCompleted || daysLeft < 0) {
-        return { bg: "#e9ecef", border: "#adb5bd", text: "#495057", label: "pass" };
+        return { bg: "#e9ecef", border: "#adb5bd", text: "#495057", label: "khác" };
     }
     // 2. <= 3 ngày -> Màu ĐỎ (Cực gấp)
     if (daysLeft <= 3) {
@@ -758,12 +802,19 @@ function renderWeekSchedule(items, mondayDate, filterType = "0", todayDate = new
             cardExtraStyle = 'border: 1.5px dashed #d93025 !important;';
         }
 
+        const checkBtn = item.isCompleted 
+            ? `<span class="deadline-check-btn completed" onclick="toggleDeadlineComplete('${item.id}', event)" title="Đã xong / Bỏ đánh dấu">
+                <i class="fa fa-check-circle" style="color: #495057; font-size: 13.5px;"></i>
+               </span>` 
+            : '';
+
         let cardHtml = `
             <div class="content text-start deadline-card" onclick="showDeadlineDetail('${item.id}', event, this)" title="Hạn chót: ${fullTimeStr} | ${badgeText}" style="background-color: ${styleInfo.bg}; border: 1.5px solid ${styleInfo.border}; ${cardExtraStyle} color: ${styleInfo.text}; padding: 7px 9px; margin-bottom: 6px; border-radius: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); text-align: left;">
-                <!-- HEADER THẺ (PHƯƠNG ÁN C): GIỜ HẠN CHÓT + BADGE THỜI GIAN CÒN LẠI -->
+                <!-- HEADER THẺ (PHƯƠNG ÁN C): NÚT TÍCH + GIỜ HẠN CHÓT + BADGE THỜI GIAN CÒN LẠI -->
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; padding-bottom: 4px; border-bottom: 1px dashed rgba(0,0,0,0.18);">
                     <div style="font-size: 11.5px; font-weight: 700; color: ${styleInfo.text}; display: flex; align-items: center; gap: 4px;">
-                        <i class="fa fa-clock-o" aria-hidden="true"></i> <span>${timeOnly}</span>
+                        ${checkBtn}
+                        <i class="fa fa-clock-o" aria-hidden="true" style="font-size: 11px;"></i> <span>${timeOnly}</span>
                         ${syncStatusHtml}
                     </div>
                     <span style="background: rgba(255, 255, 255, 0.7); border: 1px solid ${styleInfo.border}; border-radius: 3px; padding: 1px 5px; font-size: 10px; font-weight: 700; color: ${styleInfo.text}; white-space: nowrap;">
@@ -845,9 +896,10 @@ function renderMonthSchedule(items, year, month, filterType = "0", todayDate = n
                 mSync = ' <i class="fa fa-exclamation-triangle" style="color: #d93025; margin-left: 2px;"></i>';
             }
 
+            const checkIcon = dl.isCompleted ? '<i class="fa fa-check" style="font-size: 10px; margin-right: 3px; color: #495057;"></i>' : '';
             chipsHtml += `
                 <div class="month-deadline-chip" onclick="showDeadlineDetail('${dl.id}', event, this)" title="${escapeHtml(dl.title)} (Hạn: ${timeOnly})" style="background-color: ${styleInfo.bg}; border-left-color: ${styleInfo.border} !important; color: ${styleInfo.text};">
-                    <span class="month-chip-title">${escapeHtml(dl.title)}</span>
+                    ${checkIcon}<span class="month-chip-title">${escapeHtml(dl.title)}</span>
                     ${mSync}
                 </div>
             `;
@@ -923,9 +975,10 @@ function showDayDeadlinesModal(dateKey, event, triggerEl) {
         const dueObj = parseDeadlineDate(dl.dueDate);
         const timeOnly = `${String(dueObj.getHours()).padStart(2, '0')}:${String(dueObj.getMinutes()).padStart(2, '0')}`;
 
+        const checkIcon = dl.isCompleted ? '<i class="fa fa-check" style="font-size: 11px; margin-right: 4px; color: #495057;"></i>' : '';
         itemsHtml += `
             <div class="popover-day-item" onclick="closeMonthDayListPopover(); showDeadlineDetail('${dl.id}', event, this);" style="background-color: ${styleInfo.bg}; border-left-color: ${styleInfo.border} !important; color: ${styleInfo.text};">
-                <span class="popover-day-title" title="${escapeHtml(dl.title)}">${escapeHtml(dl.title)}</span>
+                <span class="popover-day-title" title="${escapeHtml(dl.title)}">${checkIcon}${escapeHtml(dl.title)}</span>
                 <span class="popover-day-time">${timeOnly}</span>
             </div>
         `;
@@ -1130,10 +1183,17 @@ function renderMobileSessions(targetDate) {
                     syncStatusHtml = `<span style="color: #d93025; margin-left: 3px;"><i class="fa fa-exclamation-triangle"></i></span>`;
                 }
 
+                const checkBtn = item.isCompleted 
+                    ? `<span class="deadline-check-btn completed" onclick="toggleDeadlineComplete('${item.id}', event)" title="Đã xong / Bỏ đánh dấu">
+                        <i class="fa fa-check-circle" style="color: #495057; font-size: 14px;"></i>
+                       </span>` 
+                    : '';
+
                 cardsHtml += `
                     <div class="m-deadline-card" onclick="showDeadlineDetail('${item.id}', event, this)" style="background-color: ${styleInfo.bg}; border-color: ${styleInfo.border}; color: ${styleInfo.text};">
                         <div class="m-card-header">
-                            <div class="m-card-time" style="color: ${styleInfo.text};">
+                            <div class="m-card-time" style="color: ${styleInfo.text}; display: flex; align-items: center; gap: 4px;">
+                                ${checkBtn}
                                 <i class="fa fa-clock-o"></i> <span>${timeOnly}</span>
                                 ${syncStatusHtml}
                             </div>
@@ -1318,6 +1378,46 @@ function showDeadlineDetail(id, event, element) {
         $('#detailAssigneesRow').hide();
     }
 
+    // HIỂN THỊ THÔNG TIN NHÓM / KÊNH LÀM VIỆC (ZALO, TELEGRAM...)
+    const hasGroupName = Boolean(item.groupName && item.groupName.trim());
+    const hasGroupLink = Boolean(item.groupLink && item.groupLink.trim());
+
+    if (hasGroupName || hasGroupLink) {
+        let groupHtml = '';
+        if (hasGroupLink) {
+            let targetUrl = item.groupLink.trim();
+            if (!/^https?:\/\//i.test(targetUrl)) {
+                targetUrl = 'https://' + targetUrl;
+            }
+            const displayLabel = hasGroupName ? item.groupName.trim() : item.groupLink.trim();
+            groupHtml = `
+                <a href="${escapeHtml(targetUrl)}" target="_blank" rel="noopener noreferrer" style="color: #1a73e8; font-weight: 600; text-decoration: underline; text-underline-offset: 2px;" title="Mở nhóm">
+                    ${escapeHtml(displayLabel)}
+                </a>
+            `;
+        } else {
+            // Chỉ có tên nhóm (không có link)
+            groupHtml = `
+                <span style="font-weight: 600; color: #202124;">${escapeHtml(item.groupName.trim())}</span>
+                <button type="button" class="btn-copy-mini" onclick="copyTextToClipboard('${escapeHtml(item.groupName.trim())}')" title="Sao chép tên nhóm">
+                    <i class="fa fa-clone"></i> copy
+                </button>
+            `;
+        }
+        $('#detailGroupContent').html(groupHtml);
+        $('#detailGroupRow').css('display', 'flex');
+    } else {
+        $('#detailGroupRow').hide();
+    }
+
+    // HIỂN THỊ MÔ TẢ CHI TIẾT / GHI CHÚ
+    if (item.description && item.description.trim()) {
+        $('#detailDescriptionText').text(item.description.trim());
+        $('#detailDescriptionRow').css('display', 'flex');
+    } else {
+        $('#detailDescriptionRow').hide();
+    }
+
     // HIỂN THỊ BANNER ĐỒNG BỘ TRÊN POPOVER (NẾU CÓ)
     if (item._syncStatus === 'pending') {
         $('#detailSyncBanner').html(`
@@ -1342,6 +1442,7 @@ function showDeadlineDetail(id, event, element) {
     } else {
         $('#detailSyncBanner').hide();
     }
+
 
     $('#detailMoreMenu').hide();
 
@@ -1402,6 +1503,39 @@ async function deleteDeadlineFromDetail(id) {
         await optimisticDeleteDeadline(targetId);
     }
 }
+
+async function toggleDeadlineComplete(id, event) {
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+    const item = currentDeadlines.find(d => d.id === id);
+    if (!item) return;
+
+    const nextCompleted = item.isCompleted ? 0 : 1;
+    await optimisticUpdateDeadline(id, {
+        isCompleted: nextCompleted
+    });
+
+    if (nextCompleted === 1) {
+        if (typeof toastr !== 'undefined') {
+            toastr.success('Đã đánh dấu xong!', '', { timeOut: 1500 });
+        }
+    }
+}
+window.toggleDeadlineComplete = toggleDeadlineComplete;
+
+async function toggleDeadlineCompleteFromDetail(id, event) {
+    const targetId = id || currentDetailId;
+    if (!targetId) return;
+    await toggleDeadlineComplete(targetId, event);
+    if (currentDetailId === targetId) {
+        setTimeout(() => {
+            showDeadlineDetail(targetId);
+        }, 80);
+    }
+}
+window.toggleDeadlineCompleteFromDetail = toggleDeadlineCompleteFromDetail;
 
 function copyDeadlineWithPrompt(id) {
     const targetId = id || currentDetailId;
@@ -1540,6 +1674,10 @@ function openCreateDeadlineModal(category) {
     $('#modalDateText').text(formatVietnameseDate(selectedModalDate));
     $('#modalTimeInput').val("09:00");
     $('#modalInputTitle').val("");
+    $('#modalInputGroupName').val("");
+    $('#modalInputGroupLink').val("");
+    $('#modalInputDescription').val("");
+    $('#modalInputCompleted').prop('checked', false);
     $('#modalCalendarPopup').hide();
     renderMiniCalGrid();
 
@@ -1558,6 +1696,10 @@ function openEditDeadlineModal(id) {
     $('#btnModalSave').text('Cập nhật');
     setModalCategory(item.category || 'personal');
     $('#modalInputTitle').val(item.title);
+    $('#modalInputGroupName').val(item.groupName || "");
+    $('#modalInputGroupLink').val(item.groupLink || "");
+    $('#modalInputDescription').val(item.description || "");
+    $('#modalInputCompleted').prop('checked', Boolean(item.isCompleted));
 
     if (item.category === 'group') {
         let isAll = !item.assignees || item.assignees === 'all' || item.assignees === '["all"]';
@@ -1773,6 +1915,11 @@ async function saveNewDeadlineFromModal() {
         assignees = currentUser ? [currentUser.id] : ['guest'];
     }
 
+    const groupName = $('#modalInputGroupName').val().trim() || null;
+    const groupLink = $('#modalInputGroupLink').val().trim() || null;
+    const description = $('#modalInputDescription').val().trim() || null;
+    const isCompleted = $('#modalInputCompleted').is(':checked') ? 1 : 0;
+
     if (editingDeadlineId) {
         // CẬP NHẬT VỚI OPTIMISTIC UI (TỨC THÌ 0.01s)
         const updateId = editingDeadlineId;
@@ -1785,7 +1932,11 @@ async function saveNewDeadlineFromModal() {
             dueDate: dueDateStr,
             session: session,
             category: activeModalCategory,
-            assignees: assignees
+            assignees: assignees,
+            groupName: groupName,
+            groupLink: groupLink,
+            description: description,
+            isCompleted: isCompleted
         });
         return;
     }
@@ -1794,13 +1945,27 @@ async function saveNewDeadlineFromModal() {
     currentDate = new Date(selectedModalDate);
     closeCreateDeadlineModal();
 
-    await optimisticCreateDeadline({
+    const createdDl = await optimisticCreateDeadline({
         title: title,
         dueDate: dueDateStr,
         session: session,
         category: activeModalCategory,
-        assignees: assignees
+        assignees: assignees,
+        groupName: groupName,
+        groupLink: groupLink,
+        description: description,
+        isCompleted: isCompleted
     });
+
+    if (createdDl) {
+        addNotification({
+            deadlineId: createdDl.id,
+            type: 'info',
+            title: '🆕 Deadline mới đã tạo',
+            message: `${title} · ${formatVietnameseDate(selectedModalDate)}`,
+            dueDate: dueDateStr
+        });
+    }
 }
 
 // ==========================================
@@ -1811,6 +1976,8 @@ $(document).ready(function () {
     initDatePicker();
     fetchDeadlinesFromDb();
     loadRegisteredUsers();
+    updateNotifBadge();
+    renderNotificationList();
 
     // Lọc tìm kiếm theo từ khóa trực tiếp từ SQL
     let searchTimeout = null;
@@ -1826,6 +1993,11 @@ $(document).ready(function () {
     setInterval(function() {
         renderCurrentView();
     }, 60000);
+
+    // QUÉT VÀ THÔNG BÁO HẠN CHÓT ĐỊNH KỲ MỖI 30 GIÂY
+    setInterval(function() {
+        checkDeadlineReminders();
+    }, 30000);
 });
 
 function initDatePicker() {
@@ -1951,4 +2123,238 @@ $(window).on('resize', function () {
         renderCurrentView();
     }, 150);
 });
+
+// ==========================================
+// 7. HỆ THỐNG THÔNG BÁO HẠN CHÓT (NOTIFICATION CENTER)
+// ==========================================
+function getNotifStorageKey() {
+    const user = getAuthUser();
+    return user ? `deadline_notifs_${user.id}` : 'deadline_notifs_guest';
+}
+
+function getStoredNotifications() {
+    try {
+        const raw = localStorage.getItem(getNotifStorageKey());
+        return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function saveStoredNotifications(list) {
+    try {
+        localStorage.setItem(getNotifStorageKey(), JSON.stringify(list.slice(0, 50)));
+    } catch (e) {
+        console.error('[Save Notifs Error]:', e);
+    }
+    updateNotifBadge();
+    renderNotificationList();
+}
+
+function addNotification({ deadlineId, type, title, message, dueDate }) {
+    const list = getStoredNotifications();
+    const newNotif = {
+        id: 'notif-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+        deadlineId: deadlineId || null,
+        type: type || 'info', // 'urgent' | 'warning' | 'info'
+        title,
+        message,
+        dueDate: dueDate || null,
+        isRead: false,
+        createdAt: new Date().toISOString()
+    };
+    list.unshift(newNotif);
+    saveStoredNotifications(list);
+
+    // Kích hoạt Web Notification native của trình duyệt nếu người dùng đã cho phép
+    sendBrowserNativeNotification(title, message);
+}
+window.addNotification = addNotification;
+
+function updateNotifBadge() {
+    const list = getStoredNotifications();
+    const unreadCount = list.filter(n => !n.isRead).length;
+    const badge = $('#notifBadge');
+    if (unreadCount > 0) {
+        badge.text(unreadCount > 99 ? '99+' : unreadCount).show();
+    } else {
+        badge.hide();
+    }
+}
+window.updateNotifBadge = updateNotifBadge;
+
+function renderNotificationList() {
+    const list = getStoredNotifications();
+    const container = $('#notificationList');
+    if (!container.length) return;
+
+    if (list.length === 0) {
+        container.html(`
+            <div style="padding: 26px 16px; text-align: center; color: #70757a; font-size: 12.5px;">
+                <i class="fa fa-bell-slash-o" style="font-size: 24px; color: #dadce0; margin-bottom: 8px; display: block;"></i>
+                Chưa có thông báo nhắc hẹn nào.
+            </div>
+        `);
+        return;
+    }
+
+    let html = '';
+    list.forEach(n => {
+        let iconHtml = '<i class="fa fa-bell" style="color: #1a73e8; font-size: 13px;"></i>';
+        if (n.type === 'urgent') {
+            iconHtml = '<i class="fa fa-exclamation-circle" style="color: #d93025; font-size: 14px;"></i>';
+        } else if (n.type === 'warning') {
+            iconHtml = '<i class="fa fa-clock-o" style="color: #f2994a; font-size: 14px;"></i>';
+        }
+
+        const readStyle = n.isRead ? 'opacity: 0.7;' : 'font-weight: 600;';
+
+        html += `
+            <div class="notif-item ${n.type}" onclick="handleNotifClick('${n.id}', '${n.deadlineId || ''}')" style="${readStyle}">
+                <div style="margin-top: 2px;">${iconHtml}</div>
+                <div style="flex: 1; min-width: 0;">
+                    <div style="font-size: 12.5px; color: #202124; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        ${escapeHtml(n.title)}
+                    </div>
+                    <div style="font-size: 11.5px; color: #5f6368; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        ${escapeHtml(n.message)}
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    container.html(html);
+}
+window.renderNotificationList = renderNotificationList;
+
+function toggleNotificationDropdown(event) {
+    if (event) event.stopPropagation();
+    closeUserDropdown();
+    const dropdown = $('#notificationDropdown');
+    const isVisible = dropdown.is(':visible');
+    if (!isVisible) {
+        requestBrowserNotificationPermission();
+        renderNotificationList();
+    }
+    dropdown.stop(true, true).slideToggle(160);
+}
+window.toggleNotificationDropdown = toggleNotificationDropdown;
+
+function closeNotificationDropdown() {
+    $('#notificationDropdown').stop(true, true).slideUp(120);
+}
+window.closeNotificationDropdown = closeNotificationDropdown;
+
+function clearAllNotifications(event) {
+    if (event) event.stopPropagation();
+    const list = getStoredNotifications().map(n => ({ ...n, isRead: true }));
+    saveStoredNotifications(list);
+}
+window.clearAllNotifications = clearAllNotifications;
+
+function handleNotifClick(notifId, deadlineId) {
+    const list = getStoredNotifications();
+    const found = list.find(n => n.id === notifId);
+    if (found) {
+        found.isRead = true;
+        saveStoredNotifications(list);
+    }
+    closeNotificationDropdown();
+
+    if (deadlineId) {
+        const item = currentDeadlines.find(d => d.id === deadlineId);
+        if (item) {
+            currentDate = parseDeadlineDate(item.dueDate);
+            renderCurrentView();
+            setTimeout(() => {
+                showDeadlineDetail(deadlineId);
+            }, 120);
+        }
+    }
+}
+window.handleNotifClick = handleNotifClick;
+
+// QUÉT VÀ THÔNG BÁO TỰ ĐỘNG THEO THỜI GIAN THẬT
+function checkDeadlineReminders() {
+    const user = getAuthUser();
+    const now = new Date();
+
+    currentDeadlines.forEach(item => {
+        // Chỉ nhắc deadline chưa hoàn thành
+        if (item.isCompleted) return;
+
+        // Nếu đã đăng nhập: chỉ nhắc deadline liên quan tới user
+        if (user) {
+            if (item.category === 'personal' && item.userId && item.userId !== user.id) return;
+            if (item.category === 'group' && item.assignees && item.assignees !== 'all' && item.assignees !== '["all"]') {
+                let parsed = [];
+                try { parsed = typeof item.assignees === 'string' ? JSON.parse(item.assignees) : item.assignees; } catch (e) { parsed = [String(item.assignees)]; }
+                if (Array.isArray(parsed) && parsed.length > 0 && !parsed.includes('all') && !parsed.includes(user.id)) {
+                    return;
+                }
+            }
+        }
+
+        const dueObj = parseDeadlineDate(item.dueDate);
+        const diffMs = dueObj.getTime() - now.getTime();
+
+        if (diffMs <= 0) return; // Quá hạn thì không nhắc
+
+        // 1. MỐC KHẨN CẤP: CÒN <= 30 PHÚT
+        const key30m = `notified_dl_${item.id}_30m`;
+        if (diffMs <= 30 * 60 * 1000) {
+            if (!localStorage.getItem(key30m)) {
+                localStorage.setItem(key30m, '1');
+                const minsLeft = Math.max(1, Math.round(diffMs / 60000));
+                addNotification({
+                    deadlineId: item.id,
+                    type: 'urgent',
+                    title: `🚨 GẤP: Chỉ còn ${minsLeft} phút!`,
+                    message: item.title,
+                    dueDate: item.dueDate
+                });
+                if (typeof toastr !== 'undefined') {
+                    toastr.error(`🚨 KHẨN CẤP: Deadline "${item.title}" chỉ còn ${minsLeft} phút!`, 'Hạn chót sắp tới', { timeOut: 8000 });
+                }
+            }
+        }
+
+        // 2. MỐC NHẮC NHỞ: CÒN <= 3 NGÀY (VÀ > 30 PHÚT)
+        const key3d = `notified_dl_${item.id}_3d`;
+        if (diffMs <= 3 * 24 * 60 * 60 * 1000 && diffMs > 30 * 60 * 1000) {
+            if (!localStorage.getItem(key3d)) {
+                localStorage.setItem(key3d, '1');
+                const daysLeft = Math.ceil(diffMs / (24 * 60 * 60 * 1000));
+                addNotification({
+                    deadlineId: item.id,
+                    type: 'warning',
+                    title: `⏰ Sắp đến hạn: Còn ${daysLeft} ngày`,
+                    message: item.title,
+                    dueDate: item.dueDate
+                });
+                if (typeof toastr !== 'undefined') {
+                    toastr.warning(`⏰ Nhắc nhở: Deadline "${item.title}" còn ${daysLeft} ngày nữa!`, 'Sắp đến hạn', { timeOut: 5000 });
+                }
+            }
+        }
+    });
+}
+window.checkDeadlineReminders = checkDeadlineReminders;
+
+function requestBrowserNotificationPermission() {
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
+}
+
+function sendBrowserNativeNotification(title, body) {
+    if ('Notification' in window && Notification.permission === 'granted') {
+        try {
+            new Notification(title, {
+                body: body,
+                icon: '/favicon.ico'
+            });
+        } catch (e) {}
+    }
+}
 

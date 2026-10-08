@@ -16,6 +16,9 @@ const deadlineController = {
                 user_id as userId,
                 user_name as userName,
                 assignees,
+                group_name as groupName,
+                group_link as groupLink,
+                description,
                 is_completed as isCompleted, 
                 created_at, 
                 updated_at
@@ -57,6 +60,9 @@ const deadlineController = {
                 user_id as userId,
                 user_name as userName,
                 assignees,
+                group_name as groupName,
+                group_link as groupLink,
+                description,
                 is_completed as isCompleted, 
                 created_at, 
                 updated_at
@@ -67,27 +73,33 @@ const deadlineController = {
     },
 
     // 3. Thêm mới deadline vào SQL
-    create: ({ id, title, dueDate, session, category, userId, userName, assignees, isCompleted }) => {
+    create: (data) => {
+        const { id, title, dueDate, session, category, userId, userName, assignees, groupName, group_name, groupLink, group_link, description, isCompleted } = data;
         const dlId = id || ('dl-' + Date.now());
         const cat = category || 'personal';
         const uId = userId || null;
         const uName = userName || null;
         const asg = typeof assignees === 'object' ? JSON.stringify(assignees) : (assignees || 'all');
+        const gName = (groupName !== undefined ? groupName : group_name) || null;
+        const gLink = (groupLink !== undefined ? groupLink : group_link) || null;
+        const desc = description || null;
         const completed = isCompleted ? 1 : 0;
 
         const insert = db.prepare(`
-            INSERT INTO deadlines (id, title, due_date, session, category_id, user_id, user_name, assignees, is_completed)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO deadlines (id, title, due_date, session, category_id, user_id, user_name, assignees, group_name, group_link, description, is_completed)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
-        insert.run(dlId, title, dueDate, session, cat, uId, uName, asg, completed);
+        insert.run(dlId, title, dueDate, session, cat, uId, uName, asg, gName, gLink, desc, completed);
 
         return deadlineController.getById(dlId);
     },
 
     // 4. Cập nhật deadline trong SQL
-    update: (id, { title, dueDate, session, category, userId, userName, assignees, isCompleted }) => {
+    update: (id, data) => {
         const current = deadlineController.getById(id);
         if (!current) return null;
+
+        const { title, dueDate, session, category, userId, userName, assignees, groupName, group_name, groupLink, group_link, description, isCompleted } = data;
 
         const newTitle = title !== undefined ? title : current.title;
         const newDueDate = dueDate !== undefined ? dueDate : current.dueDate;
@@ -96,6 +108,11 @@ const deadlineController = {
         const newUserId = userId !== undefined ? userId : current.userId;
         const newUserName = userName !== undefined ? userName : current.userName;
         const newAssignees = assignees !== undefined ? (typeof assignees === 'object' ? JSON.stringify(assignees) : assignees) : current.assignees;
+        const inputGName = groupName !== undefined ? groupName : group_name;
+        const newGroupName = inputGName !== undefined ? inputGName : current.groupName;
+        const inputGLink = groupLink !== undefined ? groupLink : group_link;
+        const newGroupLink = inputGLink !== undefined ? inputGLink : current.groupLink;
+        const newDescription = description !== undefined ? description : current.description;
         const newCompleted = isCompleted !== undefined ? (isCompleted ? 1 : 0) : current.isCompleted;
 
         const update = db.prepare(`
@@ -107,11 +124,14 @@ const deadlineController = {
                 user_id = ?,
                 user_name = ?,
                 assignees = ?,
+                group_name = ?,
+                group_link = ?,
+                description = ?,
                 is_completed = ?, 
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
         `);
-        update.run(newTitle, newDueDate, newSession, newCategory, newUserId, newUserName, newAssignees, newCompleted, id);
+        update.run(newTitle, newDueDate, newSession, newCategory, newUserId, newUserName, newAssignees, newGroupName, newGroupLink, newDescription, newCompleted, id);
 
         return deadlineController.getById(id);
     },
