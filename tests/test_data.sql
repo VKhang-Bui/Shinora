@@ -61,3 +61,31 @@ INSERT OR REPLACE INTO deadlines (id, title, due_date, session, category_id, use
 ('dl-test-3week', 'Đề cương nghiên cứu (Kiểm thử màu vàng 3 tuần)', '2026-10-22T15:00:00', 'chieu', 'personal', 'bui-van-khang', 'Bùi Văn Khang', '["bui-van-khang"]', 0),
 ('dl-test-2month', 'Kế hoạch khóa luận (Kiểm thử màu xanh 2 tháng)', '2026-11-20T10:00:00', 'sang', 'personal', 'bui-van-khang', 'Bùi Văn Khang', '["bui-van-khang"]', 0),
 ('dl-test-done', 'Nhiệm vụ đã hoàn thành (Kiểm thử isCompleted = 1)', '2026-10-10T16:00:00', 'chieu', 'group', 'bui-van-khang', 'Bùi Văn Khang', 'all', 1);
+
+-- 5. BẢNG FEEDBACKS VÀ PUSH CHO TESTS
+CREATE TABLE IF NOT EXISTS feedbacks (
+    id VARCHAR(50) PRIMARY KEY,
+    user_id VARCHAR(100),
+    user_name NVARCHAR(100),
+    content TEXT NOT NULL,
+    device_info TEXT,
+    screenshot TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id VARCHAR(50) PRIMARY KEY,
+    user_id VARCHAR(100),
+    endpoint TEXT UNIQUE NOT NULL,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS push_logs (
+    id VARCHAR(50) PRIMARY KEY,
+    deadline_id VARCHAR(50) NOT NULL,
+    stage VARCHAR(20) NOT NULL,
+    sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(deadline_id, stage)
+);

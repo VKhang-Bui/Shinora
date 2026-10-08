@@ -2021,6 +2021,7 @@ $(document).ready(function () {
     loadRegisteredUsers();
     updateNotifBadge();
     renderNotificationList();
+    initServiceWorker();
 
     // Lọc tìm kiếm theo từ khóa trực tiếp từ SQL
     let searchTimeout = null;
@@ -2395,11 +2396,320 @@ function sendBrowserNativeNotification(title, body) {
         try {
             new Notification(title, {
                 body: body,
-                icon: '/favicon.ico'
+                icon: '/shared/favicon.ico'
             });
         } catch (e) {}
     }
 }
+
+// ==========================================
+// 8. TÍCH HỢP SERVICE WORKER & WEB PUSH NOTIFICATION
+// ==========================================
+function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding)
+        .replace(/\-/g, '+')
+        .replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+}
+
+// Đảm bảo và tự động đăng ký Push Subscription với máy chủ
+async function ensurePushSubscription() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        throw new Error('Trình duyệt trên thiết bị này không hỗ trợ Web Push ngoài màn hình (yêu cầu HTTPS hoặc duyệt trên máy tính qua localhost).');
+    }
+
+    // 1. Kiểm tra / Xin quyền thông báo hệ điều hành
+    let permission = Notification.permission;
+    if (permission === 'default') {
+        permission = await Notification.requestPermission();
+    }
+    if (permission !== 'granted') {
+        throw new Error('Bạn chưa cấp quyền thông báo cho trình duyệt. Vui lòng bấm [Cho phép] (Allow) để nhận thông báo vào máy tính/hệ thống!');
+    }
+
+    // 2. Chờ Service Worker sẵn sàng
+    const registration = await navigator.serviceWorker.ready;
+
+    // 3. Lấy hoặc tạo mới subscription
+    let sub = await registration.pushManager.getSubscription();
+    if (!sub) {
+        const resKey = await fetch('/api/push/vapid-key').then(r => r.json());
+        if (!resKey.success || !resKey.publicKey) {
+            throw new Error('Không lấy được Public Key từ máy chủ');
+        }
+
+        const convertedKey = urlBase64ToUint8Array(resKey.publicKey);
+        sub = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: convertedKey
+        });
+    }
+
+    // 4. Lưu / Cập nhật subscription lên cơ sở dữ liệu SQLite
+    const user = getAuthUser();
+    await fetch('/api/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            subscription: sub,
+            userId: user ? user.id : 'guest'
+        })
+    });
+
+    return sub;
+}
+window.ensurePushSubscription = ensurePushSubscription;
+
+async function initServiceWorker() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        return;
+    }
+
+    try {
+        const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+        console.log('[Service Worker] Đã đăng ký thành công với scope:', registration.scope);
+
+        // Nếu đã từng cấp quyền trước đó, tự động đồng bộ subscription với máy chủ
+        if (Notification.permission === 'granted') {
+            ensurePushSubscription().catch(e => console.warn('[Auto Push Sync]:', e.message));
+        }
+    } catch (err) {
+        console.warn('[Service Worker] Không thể đăng ký:', err);
+    }
+}
+window.initServiceWorker = initServiceWorker;
+
+// Kiểm tra và cập nhật giao diện Trạng thái Push trong Drawer Trợ giúp
+async function refreshHelpPushUI() {
+    const badge = $('#helpPushStatusBadge');
+    const toggleWrapper = $('#helpPushToggleWrapper');
+    const btnToggle = $('#btnToggleHelpPush');
+    const guideBox = $('#helpPushBlockedGuide');
+    if (!badge.length) return;
+
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        badge.css({ background: '#f8f9fa', color: '#5f6368', border: '1px solid #e8eaed' })
+            .html('<i class="fa fa-info-circle" style="color: #1a73e8;"></i> <strong>Thông báo trong web đang hoạt động:</strong> Trình duyệt này hỗ trợ đầy đủ chuông thông báo & âm thanh trong web. (Tính năng Web Push ngoài màn hình khi tắt web yêu cầu HTTPS hoặc duyệt trên máy tính qua localhost).');
+        if (toggleWrapper.length) toggleWrapper.hide();
+        if (guideBox.length) guideBox.hide();
+        return;
+    }
+
+    if (Notification.permission === 'denied') {
+        badge.css({ background: '#fce8e6', color: '#d93025', border: '1px solid #fad2cf' })
+            .html('<i class="fa fa-ban"></i> <strong>Quyền thông báo đang bị chặn:</strong> Trình duyệt chưa cấp quyền hiển thị thông báo ngoài màn hình.');
+        if (toggleWrapper.length) toggleWrapper.show();
+        btnToggle.removeClass('btn-help-action-primary').css({ background: '#fce8e6', color: '#d93025', border: '1px solid #fad2cf' })
+            .html('<i class="fa fa-unlock-alt"></i> Bị chặn - Xem hướng dẫn mở khóa bên dưới')
+            .prop('disabled', true);
+        if (guideBox.length) guideBox.show();
+        return;
+    }
+
+    try {
+        const registration = await navigator.serviceWorker.ready;
+        const subscription = await registration.pushManager.getSubscription();
+
+        if (subscription && Notification.permission === 'granted') {
+            badge.css({ background: '#e6f4ea', color: '#137333', border: '1px solid #ceead6' })
+                .html('<i class="fa fa-check-circle"></i> <strong>Đang hoạt động:</strong> Bạn sẽ nhận được thông báo ngoài màn hình máy tính ngay cả khi đóng hoàn toàn trang web.');
+            if (toggleWrapper.length) toggleWrapper.show();
+            btnToggle.removeClass('btn-help-action-primary')
+                .css({ background: '#f1f3f4', color: '#5f6368', border: '1px solid #dadce0' })
+                .html('<i class="fa fa-bell-slash-o"></i> Tắt thông báo ngoài màn hình')
+                .prop('disabled', false);
+            if (guideBox.length) guideBox.hide();
+        } else {
+            badge.css({ background: '#f8f9fa', color: '#5f6368', border: '1px solid #dadce0' })
+                .html('<i class="fa fa-info-circle" style="color: #1a73e8;"></i> <strong>Chưa kích hoạt:</strong> Bấm nút bên dưới để nhận thông báo hạn chót ngoài màn hình ngay cả khi đóng web.');
+            if (toggleWrapper.length) toggleWrapper.show();
+            btnToggle.addClass('btn-help-action-primary')
+                .css({ background: '#1a73e8', color: '#ffffff', border: 'none' })
+                .html('<i class="fa fa-bell"></i> Bật thông báo trên thiết bị')
+                .prop('disabled', false);
+            if (guideBox.length) guideBox.hide();
+        }
+    } catch (e) {
+        badge.css({ background: '#f8f9fa', color: '#5f6368', border: '1px solid #dadce0' })
+            .html('<i class="fa fa-info-circle"></i> Bấm nút bên dưới để cấp quyền thông báo ngoài màn hình.');
+        if (toggleWrapper.length) toggleWrapper.show();
+        btnToggle.show();
+        if (guideBox.length) guideBox.hide();
+    }
+}
+window.refreshHelpPushUI = refreshHelpPushUI;
+
+async function actionTogglePushFromHelp() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        if (typeof toastr !== 'undefined') toastr.error('Trình duyệt không hỗ trợ Web Push ngoài màn hình');
+        return;
+    }
+
+    try {
+        const registration = await navigator.serviceWorker.ready;
+        const currentSub = await registration.pushManager.getSubscription();
+
+        if (currentSub) {
+            // Tắt
+            await fetch('/api/push/unsubscribe', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ endpoint: currentSub.endpoint })
+            });
+            await currentSub.unsubscribe();
+            if (typeof toastr !== 'undefined') toastr.info('Đã tắt thông báo ngoài màn hình.');
+            refreshHelpPushUI();
+        } else {
+            // Bật
+            await ensurePushSubscription();
+            if (typeof toastr !== 'undefined') {
+                toastr.success('Đã kích hoạt thông báo trên thiết bị thành công!', 'Thành công');
+            }
+            refreshHelpPushUI();
+        }
+    } catch (err) {
+        console.error('[Help Push Toggle Error]:', err);
+        if (typeof toastr !== 'undefined') toastr.error(err.message, 'Lỗi thiết lập');
+        refreshHelpPushUI();
+    }
+}
+window.actionTogglePushFromHelp = actionTogglePushFromHelp;
+
+let helpCountdownInterval = null;
+
+// Thao tác Test thông báo (Đếm ngược 10s & Bắn thông báo hệ thống ngoài màn hình khi đóng web)
+async function actionTestNotification10s() {
+    const btn = $('#btnTestHelpPush');
+    if (btn.prop('disabled')) return;
+
+    // Kiểm tra hỗ trợ trình duyệt
+    const isPushSupported = ('serviceWorker' in navigator) && ('PushManager' in window);
+
+    let sub = null;
+    if (isPushSupported) {
+        btn.prop('disabled', true).html('<i class="fa fa-circle-o-notch fa-spin"></i> Đang kết nối máy chủ...');
+        try {
+            sub = await ensurePushSubscription();
+            refreshHelpPushUI();
+        } catch (err) {
+            btn.prop('disabled', false).html('<i class="fa fa-clock-o"></i> Test thông báo (Đếm ngược 10s)');
+            if (typeof toastr !== 'undefined') {
+                toastr.error(err.message, 'Cần cấp quyền thông báo');
+            }
+            $('#helpPushBlockedGuide').show();
+            return;
+        }
+
+        // Gửi lệnh hẹn giờ 10s tới Backend Máy chủ
+        try {
+            const user = getAuthUser();
+            const res = await fetch('/api/push/test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    delaySeconds: 10,
+                    endpoint: sub.endpoint,
+                    subscription: sub,
+                    userId: user ? user.id : null
+                })
+            }).then(r => r.json());
+
+            if (!res.success) {
+                throw new Error(res.message);
+            }
+
+            if (typeof toastr !== 'undefined') {
+                toastr.success('🚀 ĐÃ HẸN GIỜ MÁY CHỦ: Đúng 10 giây nữa MÁY TÍNH CỦA BẠN sẽ nhận được thông báo như Zalo! Hãy ĐÓNG HẲN TRANG WEB hoặc chuyển tab ngay bây giờ để thử nghiệm.', 'Máy chủ đang đếm ngược 10s', { timeOut: 9000 });
+            }
+        } catch (err) {
+            btn.prop('disabled', false).html('<i class="fa fa-clock-o"></i> Test thông báo (Đếm ngược 10s)');
+            if (typeof toastr !== 'undefined') {
+                toastr.error('Lỗi gửi lệnh hẹn giờ tới máy chủ: ' + err.message);
+            }
+            return;
+        }
+    } else {
+        if (typeof toastr !== 'undefined') {
+            toastr.info('⏳ Thiết bị đang duyệt không hỗ trợ Web Push chạy ngầm (cần HTTPS hoặc duyệt trên máy tính qua localhost). Hệ thống sẽ thử nghiệm thông báo chuông sau 10s!', 'Thông báo', { timeOut: 7000 });
+        }
+    }
+
+    btn.prop('disabled', true);
+    $('#helpTestCountdownNotice').show();
+
+    let count = 10;
+    $('#helpCountdownSeconds').text(count);
+    btn.html(`<i class="fa fa-hourglass-half fa-spin"></i> Đang chờ ${count}s...`);
+
+    clearInterval(helpCountdownInterval);
+    helpCountdownInterval = setInterval(() => {
+        count--;
+        $('#helpCountdownSeconds').text(count);
+        btn.html(`<i class="fa fa-hourglass-half fa-spin"></i> Đang chờ ${count}s...`);
+
+        if (count <= 0) {
+            clearInterval(helpCountdownInterval);
+            btn.prop('disabled', false).html('<i class="fa fa-clock-o"></i> Test thông báo (Đếm ngược 10s)');
+            $('#helpTestCountdownNotice').hide();
+
+            // 1. Thêm 1 thông báo thực tế vào chuông
+            addNotification({
+                deadlineId: null,
+                type: 'urgent',
+                title: '🧪 Hạn chót thử nghiệm (Báo cáo Tiến độ)',
+                message: 'Hệ thống đã đếm ngược xong 10 giây và gửi thông báo nhắc hẹn thành công!',
+                dueDate: new Date(Date.now() + 25 * 60 * 1000).toISOString()
+            });
+
+            // 2. Bắn toastr nổi bật trên màn hình
+            if (typeof toastr !== 'undefined') {
+                toastr.error('🚨 [Thử nghiệm] Hạn chót còn 25 phút! Hệ thống đã phát thông báo vào Chuông.', 'Thông báo nhắc hẹn', { timeOut: 8000 });
+            }
+
+            // 3. Rung chuông trên header để thu hút ánh nhìn
+            $('#btnNotifBell').addClass('bell-highlight-ring');
+            setTimeout(() => {
+                $('#btnNotifBell').removeClass('bell-highlight-ring');
+            }, 3000);
+        }
+    }, 1000);
+}
+window.actionTestNotification10s = actionTestNotification10s;
+// Giữ alias tương thích
+window.actionTestPush10s = actionTestNotification10s;
+
+// Mở Chuông thông báo trên Header trực tiếp từ Trợ giúp
+function actionOpenBellNotification() {
+    closeHelpDrawer();
+    $('html, body').animate({ scrollTop: 0 }, 200);
+
+    const dropdown = $('#notificationDropdown');
+    dropdown.stop(true, true).slideDown(180);
+
+    $('#btnNotifBell').addClass('bell-highlight-ring');
+    setTimeout(() => {
+        $('#btnNotifBell').removeClass('bell-highlight-ring');
+    }, 2500);
+
+    if (typeof toastr !== 'undefined') {
+        toastr.info('Đã mở Menu Chuông thông báo trên thanh Header!', 'Chuông thông báo');
+    }
+}
+window.actionOpenBellNotification = actionOpenBellNotification;
+
+// Mở một mục trợ giúp cụ thể trực tiếp
+function openHelpTopic(topicKey) {
+    closeNotificationDropdown();
+    openHelpDrawer();
+    showHelpDetail(topicKey);
+}
+window.openHelpTopic = openHelpTopic;
 
 /* ==========================================================================
    FOOTER, DRAWER GÓP Ý & DRAWER TRỢ GIÚP (MINIMALIST & ACTIONABLE)
@@ -2410,7 +2720,7 @@ let currentFeedbackScreenshotBase64 = null;
 // Mở Drawer Góp ý
 function openFeedbackDrawer() {
     closeHelpDrawer();
-    $('#drawerBackdrop').addClass('open');
+    $('#drawerBackdrop').addClass('active open');
     $('#feedbackDrawer').addClass('open').attr('aria-hidden', 'false');
     setTimeout(function() {
         $('#feedbackContentInput').focus();
@@ -2422,7 +2732,7 @@ window.openFeedbackDrawer = openFeedbackDrawer;
 function closeFeedbackDrawer() {
     $('#feedbackDrawer').removeClass('open').attr('aria-hidden', 'true');
     if (!$('#helpDrawer').hasClass('open')) {
-        $('#drawerBackdrop').removeClass('open');
+        $('#drawerBackdrop').removeClass('active open');
     }
 }
 window.closeFeedbackDrawer = closeFeedbackDrawer;
@@ -2433,7 +2743,7 @@ function openHelpDrawer() {
     backToHelpMain();
     $('#helpSearchInput').val('');
     filterHelpTopics('');
-    $('#drawerBackdrop').addClass('open');
+    $('#drawerBackdrop').addClass('active open');
     $('#helpDrawer').addClass('open').attr('aria-hidden', 'false');
 }
 window.openHelpDrawer = openHelpDrawer;
@@ -2442,7 +2752,7 @@ window.openHelpDrawer = openHelpDrawer;
 function closeHelpDrawer() {
     $('#helpDrawer').removeClass('open').attr('aria-hidden', 'true');
     if (!$('#feedbackDrawer').hasClass('open')) {
-        $('#drawerBackdrop').removeClass('open');
+        $('#drawerBackdrop').removeClass('active open');
     }
 }
 window.closeHelpDrawer = closeHelpDrawer;
@@ -3170,6 +3480,153 @@ const HELP_TOPICS_DATA = {
                 </button>
             </div>
         `
+    },
+    'thong-bao': {
+        title: 'Thông báo nhắc hẹn',
+        badge: 'Cơ chế nhắc hẹn tự động',
+        content: `
+            <div class="help-section-desc">
+                Shinora Deadline hỗ trợ hệ thống nhắc hẹn đa tầng thông minh: vừa hiển thị số đếm trực quan trên <strong>Chuông thông báo</strong> của trang web, vừa hỗ trợ gửi <strong>Thông báo ngoài màn hình</strong> ngay cả khi bạn đã đóng hoàn toàn web.
+            </div>
+
+            <!-- PHẦN 1: CÁCH HOẠT ĐỘNG VÀ CƠ CHẾ -->
+            <div style="font-size: 12.5px; font-weight: 700; color: #202124; margin: 12px 0 6px 0;">
+                1. Hai cơ chế thông báo tự động
+            </div>
+
+            <div class="help-field-card" style="border-left: 3px solid #1a73e8;">
+                <div class="field-name" style="color: #1a73e8;"><i class="fa fa-bell-o"></i> 🔔 Thông báo trong Web (Menu Chuông Header)</div>
+                <div>Tự động nhảy chấm đỏ và số đếm trên icon Chuông góc phải Header. Nhấp vào chuông để xem danh sách; bấm vào thông báo sẽ tự động chuyển lịch đến đúng ngày và mở xem chi tiết công việc.</div>
+            </div>
+
+            <div class="help-field-card" style="border-left: 3px solid #137333;">
+                <div class="field-name" style="color: #137333;"><i class="fa fa-desktop"></i> 💻 Thông báo ngoài màn hình (Kể cả khi đóng web)</div>
+                <div>Sử dụng công nghệ Service Worker chuẩn PWA chạy ngầm. Hệ điều hành sẽ nhận tín hiệu và hiển thị banner góc màn hình (máy tính hoặc điện thoại) kèm âm thanh mặc định tinh tế của hệ thống.</div>
+            </div>
+
+            <!-- PHẦN 2: CÁC MỐC THỜI GIAN TỰ ĐỘNG NHẮC NHỞ -->
+            <div style="font-size: 12.5px; font-weight: 700; color: #202124; margin: 14px 0 6px 0;">
+                2. Các mốc thời gian tự động nhắc nhở
+            </div>
+
+            <div class="help-field-card" style="border-left: 3px solid #d93025; background: #fffbfb;">
+                <div class="field-name" style="color: #d93025;"><i class="fa fa-exclamation-circle"></i> 🚨 Mốc Khẩn cấp &middot; Còn &le; 30 phút</div>
+                <div>Hệ thống phát cảnh báo khẩn cấp màu đỏ để bạn kịp kiểm tra file, hoàn tất tài liệu và nộp bài trước giờ đóng cổng nộp.</div>
+            </div>
+
+            <div class="help-field-card" style="border-left: 3px solid #f57c00; background: #fffdf9;">
+                <div class="field-name" style="color: #d46b08;"><i class="fa fa-clock-o"></i> ⏰ Mốc Sắp đến hạn &middot; Còn &le; 3 ngày</div>
+                <div>Hệ thống nhắc trước 3 ngày để bạn chủ động chuẩn bị tài liệu, làm slide thuyết trình và phân chia công việc trong nhóm.</div>
+            </div>
+
+            <!-- PHẦN 3: HÌNH ẢNH MINH HỌA LAPTOP MOCKUP CHUẨN ĐỒNG BỘ -->
+            <div style="font-size: 12.5px; font-weight: 700; color: #202124; margin: 14px 0 6px 0;">
+                3. Minh họa hiển thị Chuông thông báo
+            </div>
+
+            <div class="laptop-mockup-wrapper">
+                <div class="laptop-mockup-screen">
+                    <div class="laptop-mockup-camera"></div>
+                    <div class="laptop-mockup-inner" style="height: 175px; background: #ffffff; padding: 10px; display: flex; flex-direction: column;">
+                        <!-- Header mini -->
+                        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e8eaed; padding-bottom: 6px; margin-bottom: 8px;">
+                            <div style="display: flex; align-items: center; gap: 4px;">
+                                <span style="font-weight: 700; color: #003763; font-size: 10px;">DEADLINE TRACKER</span>
+                            </div>
+                            <!-- Cụm Chuông có Pulsing và Badge đỏ -->
+                            <div style="display: flex; align-items: center; gap: 8px; position: relative;">
+                                <div style="position: relative; display: inline-flex; align-items: center;">
+                                    <span style="width: 24px; height: 24px; border-radius: 50%; background: #e8f0fe; color: #1a73e8; display: flex; align-items: center; justify-content: center; font-size: 12px; position: relative;">
+                                        <i class="fa fa-bell"></i>
+                                        <span style="position: absolute; top: -3px; right: -3px; background: #d93025; color: #fff; font-size: 7.5px; font-weight: 700; width: 14px; height: 14px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 1.5px solid #fff;">1</span>
+                                    </span>
+                                    <div class="pulsing-indicator" style="top: -4px; left: -4px; width: 32px; height: 32px; border-radius: 50%;"></div>
+                                </div>
+                                <span style="font-size: 8px; color: #d93025; font-weight: 700; background: #fce8e6; padding: 2px 6px; border-radius: 10px; border: 1px dashed #d93025;">
+                                    ⬅ Chấm đỏ báo có hạn chót
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Dropdown mini hiển thị thông báo -->
+                        <div style="display: flex; justify-content: flex-end;">
+                            <div style="width: 220px; background: #ffffff; border: 1px solid #dadce0; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,0.12); padding: 6px; font-size: 8px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f3f4; padding-bottom: 4px; margin-bottom: 4px;">
+                                    <span style="font-weight: 700; color: #202124;"><i class="fa fa-bell" style="color: #1a73e8;"></i> Thông báo nhắc hẹn</span>
+                                    <span style="color: #1a73e8; font-size: 7.5px;">Đã đọc hết</span>
+                                </div>
+                                <div style="background: #fff0f0; border-left: 2.5px solid #d93025; border-radius: 3px; padding: 5px 6px;">
+                                    <div style="font-weight: 700; color: #c5221f; display: flex; align-items: center; justify-content: space-between;">
+                                        <span>🚨 Nộp Báo cáo Tiến độ</span>
+                                        <span style="font-size: 7px; color: #d93025; background: #fce8e6; padding: 1px 4px; border-radius: 3px;">Còn 25 phút</span>
+                                    </div>
+                                    <div style="color: #5f6368; font-size: 7.5px; margin-top: 2px;">
+                                        Hạn chót hôm nay lúc 11:30 &middot; Bấm để xem chi tiết
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="laptop-mockup-base"></div>
+            </div>
+
+            <!-- PHẦN 4: KHỐI TƯƠNG TÁC THỬ NGHIỆM THỰC CHIẾN -->
+            <div style="font-size: 12.5px; font-weight: 700; color: #202124; margin: 16px 0 8px 0;">
+                4. Thử nghiệm tính năng thông báo
+            </div>
+
+            <div class="help-interactive-actions" style="margin-top: 6px; display: flex; flex-direction: column; gap: 8px;">
+                <button type="button" class="btn-help-action btn-help-action-primary" onclick="actionOpenBellNotification()" style="width: 100%; justify-content: center;">
+                    <i class="fa fa-bell"></i> Mở xem chuông thông báo trên Header
+                </button>
+                <button type="button" id="btnTestHelpPush" class="btn-help-action" onclick="actionTestNotification10s()" style="width: 100%; justify-content: center; background: #e8f0fe; color: #1a73e8; border: 1px solid #c2e7ff;">
+                    <i class="fa fa-clock-o"></i> Test thông báo (Đếm ngược 10s)
+                </button>
+            </div>
+
+            <!-- HỘP ĐẾM NGƯỢC 10 GIÂY -->
+            <div id="helpTestCountdownNotice" style="display: none; margin-top: 10px; font-size: 12px; color: #1a73e8; background: #e8f0fe; padding: 10px 14px; border-radius: 8px; border-left: 4px solid #1a73e8;">
+                <div style="font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                    <i class="fa fa-hourglass-half fa-spin"></i> Đang đếm ngược: <span id="helpCountdownSeconds" style="font-size: 14px; color: #d93025; font-weight: bold;">10</span> giây
+                </div>
+                <div style="line-height: 1.45; color: #3c4043;">
+                    💡 <strong>Bạn có thể:</strong> Chuyển sang tab khác hoặc đóng hoàn toàn trang web ngay bây giờ để kiểm tra xem thông báo có đẩy về máy không nhé!
+                </div>
+            </div>
+
+            <!-- PHẦN 5: TRẠNG THÁI THÔNG BÁO NGOÀI MÀN HÌNH -->
+            <div style="font-size: 12.5px; font-weight: 700; color: #202124; margin: 16px 0 8px 0;">
+                5. Thông báo ngoài màn hình máy tính / điện thoại
+            </div>
+
+            <div style="border: 1px solid #dadce0; border-radius: 8px; background: #ffffff; padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 12px;">
+                <div id="helpPushStatusBadge" style="margin-bottom: 10px; padding: 8px 12px; border-radius: 6px; font-size: 12px; background: #f1f3f4; color: #5f6368; display: flex; align-items: center; gap: 8px;">
+                    <i class="fa fa-circle-o-notch fa-spin"></i> Đang kiểm tra trạng thái thiết bị...
+                </div>
+
+                <div id="helpPushToggleWrapper" style="display: flex; gap: 8px;">
+                    <button type="button" id="btnToggleHelpPush" class="btn-help-action btn-help-action-primary" onclick="actionTogglePushFromHelp()" style="font-size: 12px; padding: 6px 14px;">
+                        <i class="fa fa-bell"></i> Bật thông báo trên thiết bị
+                    </button>
+                </div>
+            </div>
+
+            <!-- HƯỚNG DẪN MỞ KHÓA NẾU BỊ CHẶN -->
+            <div id="helpPushBlockedGuide" style="display: none; border: 1px solid #fce8e6; border-left: 4px solid #d93025; background: #fffbfb; border-radius: 6px; padding: 12px; font-size: 11.5px; color: #5f6368; margin-bottom: 12px;">
+                <div style="font-weight: 700; color: #d93025; font-size: 12px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                    <i class="fa fa-lock"></i> Hướng dẫn khắc phục nếu quyền thông báo bị chặn
+                </div>
+                <div style="line-height: 1.5;">
+                    Nếu bạn bấm Bật nhưng trình duyệt không hiện hộp thoại hỏi hoặc bị báo "Chặn":
+                    <ol style="margin: 6px 0 0 16px; padding: 0;">
+                        <li>Nhấp vào biểu tượng <strong>🔒 Ổ khóa</strong> hoặc <strong>Cài đặt trang web</strong> trên thanh địa chỉ URL.</li>
+                        <li>Tại mục <strong>Thông báo (Notifications)</strong>, chuyển sang <strong>Cho phép (Allow)</strong>.</li>
+                        <li>Tải lại trang (F5) và bấm lại nút <strong>Bật thông báo</strong> ở trên.</li>
+                    </ol>
+                </div>
+            </div>
+        `
     }
 };
 
@@ -3190,7 +3647,11 @@ function showHelpDetail(topicKey) {
         ${data.content}
     `;
 
-    $('#helpDetailContentBody').html(html);
+    $('#helpDetailContentBody').html(html).scrollTop(0);
+
+    if (topicKey === 'thong-bao') {
+        setTimeout(refreshHelpPushUI, 50);
+    }
 }
 window.showHelpDetail = showHelpDetail;
 

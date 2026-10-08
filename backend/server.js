@@ -4,6 +4,7 @@ const path = require('path');
 const deadlineController = require('./controllers/deadlineController');
 const userController = require('./controllers/userController');
 const feedbackController = require('./controllers/feedbackController');
+const pushController = require('./controllers/pushController');
 
 const PORT = process.env.PORT || 3000;
 const FRONTEND_DIR = path.join(__dirname, '..', 'frontend');
@@ -105,7 +106,36 @@ const server = http.createServer(async (req, res) => {
     }
 
     // ==========================================
-    // 3. RESTFUL API ENDPOINTS CHO DEADLINES
+    // 3. RESTFUL API ENDPOINTS CHO WEB PUSH
+    // ==========================================
+    if (pathname.startsWith('/api/push')) {
+        try {
+            if (pathname === '/api/push/vapid-key' && req.method === 'GET') {
+                return sendJson(res, 200, pushController.getVapidPublicKey());
+            }
+            if (pathname === '/api/push/subscribe' && req.method === 'POST') {
+                const body = await parseJsonBody(req);
+                const result = pushController.subscribe(body);
+                return sendJson(res, 201, result);
+            }
+            if (pathname === '/api/push/unsubscribe' && req.method === 'POST') {
+                const body = await parseJsonBody(req);
+                const result = pushController.unsubscribe(body);
+                return sendJson(res, 200, result);
+            }
+            if (pathname === '/api/push/test' && req.method === 'POST') {
+                const body = await parseJsonBody(req);
+                const result = await pushController.sendTestPush(body);
+                return sendJson(res, 200, result);
+            }
+            return sendJson(res, 405, { success: false, message: 'Phương thức không được hỗ trợ' });
+        } catch (err) {
+            return sendJson(res, 400, { success: false, message: err.message });
+        }
+    }
+
+    // ==========================================
+    // 4. RESTFUL API ENDPOINTS CHO DEADLINES
     // ==========================================
     if (pathname.startsWith('/api/deadlines')) {
         const idMatch = pathname.match(/^\/api\/deadlines\/([^\/]+)$/);
@@ -170,6 +200,8 @@ const server = http.createServer(async (req, res) => {
     let filePath = '';
     if (cleanPath === '/' || cleanPath === '/deadline' || cleanPath === '/deadline/' || cleanPath === '/pages/deadline' || cleanPath === '/pages/deadline/' || cleanPath === '/pages/deadline/index.html') {
         filePath = path.join(FRONTEND_DIR, 'pages', 'deadline', 'index.html');
+    } else if (cleanPath === '/sw.js') {
+        filePath = path.join(FRONTEND_DIR, 'sw.js');
     } else if (cleanPath === '/deadline.js' || cleanPath === '/deadline/deadline.js' || cleanPath === '/pages/deadline/deadline.js') {
         filePath = path.join(FRONTEND_DIR, 'pages', 'deadline', 'deadline.js');
     } else if (cleanPath === '/deadline.css' || cleanPath === '/deadline/deadline.css' || cleanPath === '/pages/deadline/deadline.css') {
@@ -222,10 +254,10 @@ const server = http.createServer(async (req, res) => {
             'ETag': etag
         };
 
-        // Quy định Cache-Control:
-        // - File HTML: no-cache (để luôn cập nhật khung ứng dụng mới nhất)
-        // - File tĩnh CSS, JS, Fonts, Ảnh: lưu cache 1 ngày (86400s) và stale-while-revalidate 7 ngày
-        if (ext === '.html') {
+        if (cleanPath === '/sw.js') {
+            headers['Service-Worker-Allowed'] = '/';
+            headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
+        } else if (ext === '.html') {
             headers['Cache-Control'] = 'no-cache, must-revalidate';
         } else {
             headers['Cache-Control'] = 'public, max-age=86400, stale-while-revalidate=604800';
@@ -237,12 +269,21 @@ const server = http.createServer(async (req, res) => {
     });
 });
 
+// KHỞI ĐỘNG BỘ QUÉT NHẮC HẠN DEADLINE NGẦM (BACKGROUND SCHEDULER MỖI 60S)
+setInterval(() => {
+    pushController.checkAndSendDeadlineReminders();
+}, 60000);
+setTimeout(() => {
+    pushController.checkAndSendDeadlineReminders();
+}, 5000);
+
 server.listen(PORT, () => {
     console.log(`\n======================================================`);
     console.log(`🚀 [DEADLINE TRACKER SERVER] Đang chạy tại:`);
     console.log(`👉 http://localhost:${PORT}`);
     console.log(`👉 http://localhost:${PORT}/deadline`);
     console.log(`📁 CSDL SQL thật: backend/database/deadlines.sqlite`);
+    console.log(`🔔 Web Push Notification: Đã kích hoạt Service Worker`);
     console.log(`======================================================\n`);
 });
 

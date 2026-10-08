@@ -18,6 +18,7 @@
   "author": "Khang Van",
   "license": "ISC",
   "dependencies": {
-    "nodemailer": "^10.0.16"
+    "nodemailer": "^10.0.16",
+    "web-push": "^3.6.7"
   }
 }

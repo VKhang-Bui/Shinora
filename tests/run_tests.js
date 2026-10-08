@@ -430,6 +430,60 @@ async function runTestSuite() {
     const hasFeedback = Array.isArray(resFbList.json?.data) && resFbList.json.data.some(f => f.content === 'Giao diện mới rất trực quan và tiện dụng!');
     assert(hasFeedback, 'CSDL lưu trữ chính xác nội dung feedback vừa gửi');
 
+    // -------------------------------------------------------------
+    // SUITE 9: KIỂM THỬ WEB PUSH NOTIFICATION & SERVICE WORKER
+    // -------------------------------------------------------------
+    console.log(`\n${BOLD}[SUITE 9]: Kiểm Thử Web Push Notification & Service Worker${RESET}`);
+
+    // Test 9.1: Tải Service Worker qua /sw.js
+    const resSw = await request({ host: HOST, port: PORT, path: '/sw.js', method: 'GET' });
+    assert(resSw.statusCode === 200, 'Tải Service Worker /sw.js thành công HTTP 200');
+    assert(resSw.headers['content-type'] && resSw.headers['content-type'].includes('application/javascript'), 'Content-Type /sw.js là application/javascript');
+    assert(resSw.headers['service-worker-allowed'] === '/', 'Header Service-Worker-Allowed = / cho phép hoạt động toàn trang');
+
+    // Test 9.2: Lấy VAPID Public Key
+    const resVapid = await request({ host: HOST, port: PORT, path: '/api/push/vapid-key', method: 'GET' });
+    assert(resVapid.statusCode === 200 && resVapid.json.success === true, 'GET /api/push/vapid-key trả về HTTP 200');
+    assert(typeof resVapid.json.publicKey === 'string' && resVapid.json.publicKey.length > 30, 'VAPID Public Key hợp lệ (chuỗi Base64 > 30 ký tự)');
+
+    // Test 9.3: Đăng ký Subscription không hợp lệ -> HTTP 400
+    const resSubInvalid = await request({
+        host: HOST, port: PORT, path: '/api/push/subscribe', method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    }, { subscription: {} });
+    assert(resSubInvalid.statusCode === 400, 'Đăng ký thiếu thông tin subscription trả về HTTP 400 Bad Request');
+
+    // Test 9.4: Đăng ký Subscription hợp lệ -> HTTP 201
+    const dummySub = {
+        endpoint: 'https://fcm.googleapis.com/fcm/send/test-token-shinora-' + Date.now(),
+        keys: {
+            p256dh: 'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QT9Q0wbqykY06J300uPXK272qpcET2pTauqEvaW3nVjlT-tI',
+            auth: 'tBHItJI5svbpez7KI4CCXg'
+        }
+    };
+    const resSubValid = await request({
+        host: HOST, port: PORT, path: '/api/push/subscribe', method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    }, {
+        subscription: dummySub,
+        userId: 'bùi văn khang'
+    });
+    assert(resSubValid.statusCode === 201 && resSubValid.json.success === true, 'Đăng ký subscription thành công HTTP 201');
+
+    // Test 9.5: Gửi test push với delaySeconds = 0
+    const resTestPush = await request({
+        host: HOST, port: PORT, path: '/api/push/test', method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    }, { endpoint: dummySub.endpoint, delaySeconds: 0 });
+    assert(resTestPush.statusCode === 200 && resTestPush.json.success === true, 'POST /api/push/test xử lý thành công HTTP 200');
+
+    // Test 9.6: Hủy đăng ký Subscription -> HTTP 200
+    const resUnsub = await request({
+        host: HOST, port: PORT, path: '/api/push/unsubscribe', method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    }, { endpoint: dummySub.endpoint });
+    assert(resUnsub.statusCode === 200 && resUnsub.json.success === true, 'Hủy đăng ký subscription thành công HTTP 200');
+
 
     // -------------------------------------------------------------
     // TỔNG KẾT BÁO CÁO

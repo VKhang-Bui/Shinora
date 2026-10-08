@@ -984,6 +984,49 @@ html, body {
     0%, 100% { transform: scale(1); }
     50% { transform: scale(1.15); }
 }
+
+/* Nút gạt chuyển đổi thông báo Web Push */
+.push-switch {
+    position: relative;
+    display: inline-block;
+    width: 34px;
+    height: 18px;
+    margin: 0;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.push-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+.push-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: #bdc1c6;
+    transition: 0.25s ease;
+    border-radius: 18px;
+}
+.push-slider:before {
+    position: absolute;
+    content: "";
+    height: 14px;
+    width: 14px;
+    left: 2px;
+    bottom: 2px;
+    background-color: #ffffff;
+    transition: 0.25s ease;
+    border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+}
+.push-switch input:checked + .push-slider {
+    background-color: #1a73e8;
+}
+.push-switch input:checked + .push-slider:before {
+    transform: translateX(16px);
+}
+
 .notif-item {
     display: flex;
     align-items: flex-start;
@@ -1128,7 +1171,8 @@ html, body {
     transition: opacity 0.22s ease;
     backdrop-filter: blur(1.5px);
 }
-.drawer-backdrop.active {
+.drawer-backdrop.active,
+.drawer-backdrop.open {
     opacity: 1;
     pointer-events: auto;
 }
@@ -1337,7 +1381,7 @@ html, body {
     font-size: 13.5px;
     font-weight: 500;
 }
-.help-topic-left i.fa-file-text-o {
+.help-topic-left i {
     color: #1a73e8;
     font-size: 14px;
     width: 16px;
@@ -1346,6 +1390,23 @@ html, body {
 .help-topic-arrow {
     color: #80868b;
     font-size: 13px;
+}
+
+/* HIỆU ỨNG RUNG LẮC & TỎA SÁNG KHI TEST / MỞ CHUÔNG TỪ TRỢ GIÚP */
+@keyframes bellRingShake {
+    0% { transform: scale(1) rotate(0deg); }
+    15% { transform: scale(1.15) rotate(14deg); box-shadow: 0 0 14px rgba(26, 115, 232, 0.6); }
+    30% { transform: scale(1.15) rotate(-14deg); box-shadow: 0 0 14px rgba(26, 115, 232, 0.6); }
+    45% { transform: scale(1.15) rotate(10deg); }
+    60% { transform: scale(1.15) rotate(-10deg); }
+    75% { transform: scale(1.1) rotate(4deg); }
+    100% { transform: scale(1) rotate(0deg); }
+}
+.bell-highlight-ring {
+    animation: bellRingShake 0.9s ease-in-out infinite alternate !important;
+    background: #e8f0fe !important;
+    border-color: #1a73e8 !important;
+    color: #1a73e8 !important;
 }
 
 /* KHUNG CHI TIẾT TRỢ GIÚP TƯƠNG TÁC */

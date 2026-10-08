@@ -66,3 +66,24 @@ CREATE TABLE IF NOT EXISTS feedbacks (
 );
 CREATE INDEX IF NOT EXISTS idx_feedbacks_created_at ON feedbacks(created_at);
 
+-- BẢNG PUSH SUBSCRIPTIONS (ĐĂNG KÝ NHẬN THÔNG BÁO WEB PUSH)
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id VARCHAR(50) PRIMARY KEY,
+    user_id VARCHAR(100),
+    endpoint TEXT UNIQUE NOT NULL,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_push_user_id ON push_subscriptions(user_id);
+
+-- BẢNG PUSH LOGS (GHI NHỚ CÁC MỐC ĐÃ THÔNG BÁO ĐỂ TRÁNH GỬI TRÙNG LẶP)
+CREATE TABLE IF NOT EXISTS push_logs (
+    id VARCHAR(50) PRIMARY KEY,
+    deadline_id VARCHAR(50) NOT NULL,
+    stage VARCHAR(20) NOT NULL,
+    sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(deadline_id, stage)
+);
+CREATE INDEX IF NOT EXISTS idx_push_logs_deadline ON push_logs(deadline_id);
+

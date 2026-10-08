@@ -73,6 +73,13 @@
                         <div id="notificationList" style="max-height: 320px; overflow-y: auto;">
                             <!-- Danh sách render động từ JS -->
                         </div>
+                        <!-- FOOTER TINH GỌN DẪN VÀO TRỢ GIÚP -->
+                        <div style="padding: 8px 14px; border-top: 1px solid #f1f3f4; background: #fafafa; display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 11px; color: #70757a;">Tự động nhắc hạn chót</span>
+                            <a href="javascript:void(0);" onclick="openHelpTopic('thong-bao')" style="font-size: 11.5px; color: #1a73e8; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
+                                <i class="fa fa-question-circle-o"></i> Trợ giúp
+                            </a>
+                        </div>
                     </div>
                 </div>
 
@@ -764,6 +771,13 @@
                     </div>
                     <i class="fa fa-angle-right help-topic-arrow"></i>
                 </div>
+                <div class="help-topic-item" onclick="showHelpDetail('thong-bao')">
+                    <div class="help-topic-left">
+                        <i class="fa fa-bell-o"></i>
+                        <span>Thông báo nhắc hẹn</span>
+                    </div>
+                    <i class="fa fa-angle-right help-topic-arrow"></i>
+                </div>
             </div>
 
             <!-- THANH TÌM KIẾM TRONG TRỢ GIÚP -->
@@ -835,7 +849,7 @@
 <script type="text/javascript" src="../../shared/js/bootstrap.bundle.min.js"></script>
 <script type="text/javascript" src="../../shared/js/html2canvas.min.js"></script>
 <script type="text/javascript" src="../../shared/js/main.js"></script>
-<script type="text/javascript" src="./deadline.js?v=1.1.4"></script>
+<script type="text/javascript" src="./deadline.js?v=1.1.7"></script>
 
 </body>
 </html>
