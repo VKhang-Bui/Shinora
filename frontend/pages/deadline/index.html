@@ -50,6 +50,9 @@
                 </div>
             </div>
 
+            <!-- TIÊU ĐỀ CHỈ HIỆN TRÊN ĐIỆN THOẠI -->
+            <div class="mobile-app-header-title">DEADLINE TRACKER</div>
+
             <!-- KHỐI CHUÔNG THÔNG BÁO VÀ ĐĂNG NHẬP / TÀI KHOẢN NẰM Ở GÓC TRÊN BÊN PHẢI -->
             <div id="authHeaderContainer" style="margin-left: auto; display: flex; align-items: center; gap: 10px; position: relative;">
                 <!-- CỤM CHUÔNG THÔNG BÁO (NOTIFICATION CENTER) -->
@@ -211,62 +214,70 @@
             </div>
 
             <!-- GIAO DIỆN CHUYÊN BIỆT CHO ĐIỆN THOẠI (HIỆN TRÊN MÀN HÌNH <= 768px) -->
-            <div id="mobileDayAgendaView" class="mobile-only-view">
-                <!-- 1. Thanh điều hướng tuần (Tuần trước / Tiếp / Tên tháng năm) -->
-                <div class="mobile-week-navigator">
-                    <div class="mobile-nav-title">
-                        <span id="mobileMonthYearText">Tháng 10 / 2026</span>
-                        <small id="mobileWeekSubtitle" style="color: #5f6368; font-size: 11px;">Tuần 41</small>
+            <div id="mobileAppView" class="mobile-only-view">
+                <!-- THANH TOOLBAR ĐIỀU HƯỚNG MOBILE (THEO HÌNH 1 & HÌNH 2) -->
+                <div class="mobile-nav-bar">
+                    <!-- BÊN TRÁI: HIỂN THỊ THỜI GIAN KÈM CHỌN NGÀY / THÁNG -->
+                    <div class="mobile-date-label-wrapper" onclick="openMobileDatePicker()" title="Bấm để chọn ngày khác">
+                        <span id="mobileDateDisplayLabel">Th 5, 08/10/2026</span>
+                        <i class="fa fa-caret-down"></i>
+                        <input type="date" id="mobileHiddenDatePicker" onchange="handleMobileDatePicked(this.value)">
+                        <input type="month" id="mobileHiddenMonthPicker" onchange="handleMobileMonthPicked(this.value)">
                     </div>
-                    <div class="mobile-nav-buttons">
-                        <button type="button" class="btn-m-nav" onclick="navPrevWeek()" title="Tuần trước"><i class="fa fa-chevron-left"></i></button>
-                        <button type="button" class="btn-m-nav btn-m-today" onclick="navToday()" title="Hôm nay">Hôm nay</button>
-                        <button type="button" class="btn-m-nav" onclick="navNextWeek()" title="Tuần sau"><i class="fa fa-chevron-right"></i></button>
+
+                    <!-- BÊN PHẢI: CỤM NÚT SEGMENTED [ Ngày | Tuần | Tháng ] -->
+                    <div class="mobile-segmented-wrapper">
+                        <button type="button" id="m_btn_seg_day" class="m-seg-btn active" onclick="switchMobileMode('day')">Ngày</button>
+                        <button type="button" id="m_btn_seg_week" class="m-seg-btn" onclick="switchMobileMode('week')">Tuần</button>
+                        <button type="button" id="m_btn_seg_month" class="m-seg-btn" onclick="switchMobileMode('month')">Tháng</button>
                     </div>
                 </div>
 
-                <!-- 2. Thanh trượt 7 ngày trong tuần (Day Strip) -->
-                <div class="mobile-day-strip" id="mobileDayStrip">
-                    <!-- Render động 7 ngày: T2 -> CN -->
-                </div>
-
-                <!-- 3. Chuyển chế độ xem phụ (Xem theo ca vs Xem bảng tuần) -->
-                <div class="mobile-view-toggle">
-                    <button type="button" id="btn_m_view_day" class="active" onclick="switchMobileSubView('day')">
-                        <i class="fa fa-calendar-check-o"></i> Theo ca trong ngày
-                    </button>
-                    <button type="button" id="btn_m_view_table" onclick="switchMobileSubView('table')">
-                        <i class="fa fa-table"></i> Toàn bộ bảng tuần
-                    </button>
-                </div>
-
-                <!-- 4. Danh sách các ca trong ngày được chọn -->
-                <div id="mobileDaySessionsContainer" class="mobile-sessions-container">
-                    <!-- Ca Sáng -->
-                    <div class="mobile-session-group" id="m-session-sang">
-                        <div class="session-header">
-                            <div class="session-title"><i class="fa fa-sun-o" style="color: #f5a623;"></i> Ca Sáng <small>(Trước 12:00)</small></div>
-                            <span class="session-badge" id="m-count-sang">0</span>
-                        </div>
-                        <div class="session-cards" id="m-cards-sang"></div>
+                <!-- 1. CHẾ ĐỘ XEM NGÀY (DAY VIEW - THEO HÌNH 1) -->
+                <div id="mobileViewDay" class="mobile-view-section">
+                    <div class="mobile-day-quick-nav">
+                        <button type="button" class="btn btn-action btn-m-today-quick" onclick="mobileGoToday()" title="Hiện tại"><i class="fa fa-calendar"></i> Hiện tại</button>
+                        <button type="button" class="btn btn-action btn-m-arrow" onclick="mobileStepDate(-1)" title="Trở về"><i class="fa fa-angle-left"></i> Trở về</button>
+                        <button type="button" class="btn btn-action btn-m-arrow" onclick="mobileStepDate(1)" title="Tiếp">Tiếp <i class="fa fa-angle-right"></i></button>
                     </div>
 
-                    <!-- Ca Chiều -->
-                    <div class="mobile-session-group" id="m-session-chieu">
-                        <div class="session-header">
-                            <div class="session-title"><i class="fa fa-cloud" style="color: #17a2b8;"></i> Ca Chiều <small>(12:00 - 18:00)</small></div>
-                            <span class="session-badge" id="m-count-chieu">0</span>
-                        </div>
-                        <div class="session-cards" id="m-cards-chieu"></div>
+                    <!-- Danh sách các thẻ deadline trong ngày (Không chia ca sáng/chiều/tối) -->
+                    <div id="mobileDayDeadlineList" class="mobile-day-deadline-list">
+                    </div>
+                </div>
+
+                <!-- 2. CHẾ ĐỘ XEM TUẦN (WEEK VIEW - BẢNG TUẦN NGUYÊN BẢN CỦA DỰ ÁN NHƯ HÌNH 3) -->
+                <div id="mobileViewWeek" class="mobile-view-section" style="display: none;">
+                    <div class="mobile-week-quick-nav">
+                        <button type="button" class="btn btn-action btn-m-today-quick" onclick="mobileGoToday()" title="Hiện tại"><i class="fa fa-calendar"></i> Hiện tại</button>
+                        <button type="button" class="btn btn-action btn-m-arrow" onclick="mobileStepWeek(-1)" title="Trở về"><i class="fa fa-angle-left"></i> Trở về</button>
+                        <button type="button" class="btn btn-action btn-m-arrow" onclick="mobileStepWeek(1)" title="Tiếp">Tiếp <i class="fa fa-angle-right"></i></button>
+                    </div>
+                </div>
+
+                <!-- 3. CHẾ ĐỘ XEM THÁNG (MONTH CALENDAR VIEW - THEO HÌNH 2) -->
+                <div id="mobileViewMonth" class="mobile-view-section" style="display: none;">
+                    <div class="mobile-month-quick-nav">
+                        <button type="button" class="btn btn-action btn-m-today-quick" onclick="mobileGoToday()" title="Hiện tại"><i class="fa fa-calendar"></i> Hiện tại</button>
+                        <button type="button" class="btn btn-action btn-m-arrow" onclick="mobileStepMonth(-1)" title="Trở về"><i class="fa fa-angle-left"></i> Trở về</button>
+                        <button type="button" class="btn btn-action btn-m-arrow" onclick="mobileStepMonth(1)" title="Tiếp">Tiếp <i class="fa fa-angle-right"></i></button>
                     </div>
 
-                    <!-- Ca Tối -->
-                    <div class="mobile-session-group" id="m-session-toi">
-                        <div class="session-header">
-                            <div class="session-title"><i class="fa fa-moon-o" style="color: #1a73e8;"></i> Ca Tối <small>(18:00 - 23:59)</small></div>
-                            <span class="session-badge" id="m-count-toi">0</span>
+                    <div class="mobile-month-card">
+                        <!-- Hàng 7 cột: Th 2 -> CN (Th 7 và CN màu đỏ) -->
+                        <div class="m-cal-header-row">
+                            <div class="m-cal-col-header">Th 2</div>
+                            <div class="m-cal-col-header">Th 3</div>
+                            <div class="m-cal-col-header">Th 4</div>
+                            <div class="m-cal-col-header">Th 5</div>
+                            <div class="m-cal-col-header">Th 6</div>
+                            <div class="m-cal-col-header text-weekend">Th 7</div>
+                            <div class="m-cal-col-header text-weekend">CN</div>
                         </div>
-                        <div class="session-cards" id="m-cards-toi"></div>
+
+                        <!-- Lưới ngày trong tháng kèm chấm màu deadline (Hình 2) -->
+                        <div id="mobileMonthGridDays" class="m-cal-grid-days">
+                        </div>
                     </div>
                 </div>
             </div>

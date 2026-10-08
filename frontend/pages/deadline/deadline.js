@@ -1058,218 +1058,337 @@ window.closeMonthDayListPopover = closeMonthDayListPopover;
 // ==========================================
 // 4. GIAO DIỆN CHUYÊN BIỆT CHO ĐIỆN THOẠI (MOBILE DAY AGENDA VIEW)
 // ==========================================
-let selectedMobileDayIndex = -1;
-let mobileSubView = 'day';
+// ==========================================
+// 4. GIAO DIỆN CHUYÊN BIỆT CHO ĐIỆN THOẠI (MOBILE VIEW - HÌNH 1 & HÌNH 2)
+// ==========================================
+let currentMobileMode = 'day'; // 'day' | 'week' | 'month'
 
-function getWeekNumber(d) {
-    const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-    const dayNum = date.getUTCDay() || 7;
-    date.setUTCDate(date.getUTCDate() + 4 - dayNum);
-    const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
-    return Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
-}
+function switchMobileMode(mode) {
+    currentMobileMode = mode;
+    $('.m-seg-btn').removeClass('active');
+    $(`#m_btn_seg_${mode}`).addClass('active');
 
-function selectMobileDay(index) {
-    selectedMobileDayIndex = index;
-    renderMobileDayAgendaView();
-}
-window.selectMobileDay = selectMobileDay;
+    $('body').removeClass('mobile-mode-day mobile-mode-week mobile-mode-month');
+    $('body').addClass(`mobile-mode-${mode}`);
 
-function switchMobileSubView(mode) {
-    mobileSubView = mode;
+    $('#mobileViewDay').hide();
+    $('#mobileViewWeek').hide();
+    $('#mobileViewMonth').hide();
+    $('#viewLichTheoTuan').hide();
+
     if (mode === 'day') {
-        $('#btn_m_view_day').addClass('active');
-        $('#btn_m_view_table').removeClass('active');
-        $('body').removeClass('mobile-show-table');
-    } else {
-        $('#btn_m_view_table').addClass('active');
-        $('#btn_m_view_day').removeClass('active');
-        $('body').addClass('mobile-show-table');
+        $('#mobileViewDay').show();
+        renderMobileDayView();
+    } else if (mode === 'week') {
+        $('#mobileViewWeek').show();
+        $('#viewLichTheoTuan').show();
+        renderMobileWeekView();
+    } else if (mode === 'month') {
+        $('#mobileViewMonth').show();
+        renderMobileMonthView();
+    }
+    updateMobileToolbarLabel();
+}
+window.switchMobileMode = switchMobileMode;
+
+function updateMobileToolbarLabel() {
+    const d = currentDate || new Date();
+    const dayNames = ['CN', 'Th 2', 'Th 3', 'Th 4', 'Th 5', 'Th 6', 'Th 7'];
+    const dayName = dayNames[d.getDay()];
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yyyy = d.getFullYear();
+
+    if (currentMobileMode === 'day') {
+        $('#mobileDateDisplayLabel').text(`${dayName}, ${dd}/${mm}/${yyyy}`);
+    } else if (currentMobileMode === 'month') {
+        $('#mobileDateDisplayLabel').text(`tháng ${d.getMonth() + 1}, ${yyyy}`);
+    } else if (currentMobileMode === 'week') {
+        const mon = getMonday(d);
+        const sun = new Date(mon);
+        sun.setDate(mon.getDate() + 6);
+        const d1 = `${String(mon.getDate()).padStart(2, '0')}/${String(mon.getMonth() + 1).padStart(2, '0')}`;
+        const d2 = `${String(sun.getDate()).padStart(2, '0')}/${String(sun.getMonth() + 1).padStart(2, '0')}/${sun.getFullYear()}`;
+        $('#mobileDateDisplayLabel').text(`${d1} - ${d2}`);
     }
 }
-window.switchMobileSubView = switchMobileSubView;
+window.updateMobileToolbarLabel = updateMobileToolbarLabel;
+
+function renderMobileActiveView() {
+    if (currentMobileMode === 'day') {
+        renderMobileDayView();
+    } else if (currentMobileMode === 'week') {
+        renderMobileWeekView();
+    } else if (currentMobileMode === 'month') {
+        renderMobileMonthView();
+    }
+    updateMobileToolbarLabel();
+}
+window.renderMobileActiveView = renderMobileActiveView;
+window.renderMobileDayAgendaView = renderMobileActiveView;
+
+// --- CHẾ ĐỘ XEM NGÀY (DAY VIEW - THEO HÌNH 1) ---
+function renderMobileDayView() {
+    updateMobileToolbarLabel();
+    const targetDate = currentDate || new Date();
+    const targetY = targetDate.getFullYear();
+    const targetM = targetDate.getMonth();
+    const targetD = targetDate.getDate();
+
+    const dayItems = (currentDeadlines || []).filter(item => {
+        const itemDate = parseDeadlineDate(item.dueDate);
+        return itemDate.getFullYear() === targetY &&
+               itemDate.getMonth() === targetM &&
+               itemDate.getDate() === targetD;
+    });
+
+    dayItems.sort((a, b) => parseDeadlineDate(a.dueDate).getTime() - parseDeadlineDate(b.dueDate).getTime());
+
+    const container = $('#mobileDayDeadlineList');
+    if (!container.length) return;
+
+    if (dayItems.length === 0) {
+        container.html(`
+            <div style="text-align: center; padding: 26px 14px; color: #57606a; background: #ffffff; border-radius: 6px; border: 1px dashed #d0d7de; margin-top: 6px; font-size: 13px; font-weight: 600;">
+                Không có deadline
+            </div>
+        `);
+        return;
+    }
+
+    let html = '';
+    dayItems.forEach(item => {
+        const daysLeft = calculateDaysLeft(item.dueDate, todayDate);
+        const styleInfo = getDeadlineColorStyle(daysLeft, item.isCompleted);
+        const dueObj = parseDeadlineDate(item.dueDate);
+        const timeOnly = `${String(dueObj.getHours()).padStart(2, '0')}:${String(dueObj.getMinutes()).padStart(2, '0')}`;
+
+        let syncStatusHtml = '';
+        if (item._syncStatus === 'pending') {
+            syncStatusHtml = `<span style="color: #0070ba; margin-left: 4px;" title="Đang đồng bộ..."><i class="fa fa-refresh fa-spin"></i></span>`;
+        } else if (item._syncStatus === 'error') {
+            syncStatusHtml = `<span style="color: #d93025; margin-left: 4px;" title="Lỗi đồng bộ"><i class="fa fa-exclamation-triangle"></i></span>`;
+        }
+
+        let badgeText = '';
+        if (item.isCompleted) badgeText = 'Đã hoàn thành';
+        else if (daysLeft < 0) badgeText = `Quá hạn ${Math.abs(daysLeft)} ngày`;
+        else if (daysLeft === 0) badgeText = `Hôm nay`;
+        else badgeText = `Còn ${daysLeft} ngày`;
+
+        const checkBtn = `
+            <span class="deadline-check-btn ${item.isCompleted ? 'completed' : ''}" onclick="toggleDeadlineComplete('${item.id}', event)" title="${item.isCompleted ? 'Đã xong / Nhấp để đánh dấu chưa xong' : 'Nhấp để đánh dấu hoàn thành'}" style="margin-right: 4px; cursor: pointer;">
+                <i class="fa ${item.isCompleted ? 'fa-check-circle' : 'fa-circle-o'}" style="color: ${item.isCompleted ? '#2e7d32' : styleInfo.text}; font-size: 14px;"></i>
+            </span>
+        `;
+
+        html += `
+            <div class="m-deadline-item-card ${item.isCompleted ? 'completed' : ''}" style="background-color: ${styleInfo.bg} !important; border: 1.5px solid ${styleInfo.border} !important; color: ${styleInfo.text} !important;" onclick="showDeadlineDetail('${item.id}', event, this)">
+                <!-- HEADER THẺ ĐỒNG BỘ VỚI THẺ TRÊN LAPTOP -->
+                <div class="m-card-top-row" style="border-bottom-color: rgba(0,0,0,0.1) !important;">
+                    <div class="m-card-time-group" style="color: ${styleInfo.text} !important;">
+                        ${checkBtn}
+                        <i class="fa fa-clock-o"></i>
+                        <span>${timeOnly}</span>
+                        ${syncStatusHtml}
+                    </div>
+                    <span class="m-card-badge-tag" style="border-color: ${styleInfo.border} !important; color: ${styleInfo.text} !important;">
+                        ${badgeText}
+                    </span>
+                </div>
+
+                <!-- TIÊU ĐỀ DEADLINE -->
+                <div class="m-deadline-title" style="color: ${styleInfo.text} !important;">
+                    ${escapeHtml(item.title)}
+                </div>
+
+                <!-- FOOTER THẺ: PHÂN LOẠI & NGƯỜI LÀM -->
+                <div class="m-card-bottom-row">
+                    <span class="m-badge-category" style="background: rgba(255, 255, 255, 0.75); border: 1px solid rgba(0,0,0,0.1); border-radius: 4px; padding: 2px 7px; font-size: 11px; font-weight: 600; color: ${item.category === 'group' ? '#0f9d58' : '#0070ba'};">
+                        <i class="fa ${item.category === 'group' ? 'fa-users' : 'fa-user'}"></i>
+                        ${item.category === 'group' ? (item.groupName ? escapeHtml(item.groupName) : 'Cả nhóm') : 'Cá nhân'}
+                    </span>
+                    ${item.userName ? `
+                    <span style="font-size: 11px; color: ${styleInfo.text}; opacity: 0.85; display: inline-flex; align-items: center; gap: 4px;">
+                        <i class="fa fa-user-circle-o"></i> ${escapeHtml(item.userName)}
+                    </span>` : ''}
+                </div>
+                ${item.description ? `
+                <div style="font-size: 11.5px; color: ${styleInfo.text}; opacity: 0.82; margin-top: 6px; font-style: italic; line-height: 1.35;">
+                    <i class="fa fa-pencil" style="font-size: 10px;"></i> ${escapeHtml(item.description)}
+                </div>` : ''}
+            </div>
+        `;
+    });
+
+    container.html(html);
+}
+window.renderMobileDayView = renderMobileDayView;
+
+// --- CHẾ ĐỘ XEM THÁNG (MONTH CALENDAR VIEW - THEO HÌNH 2) ---
+function renderMobileMonthView() {
+    updateMobileToolbarLabel();
+    const d = currentDate || new Date();
+    const year = d.getFullYear();
+    const month = d.getMonth();
+
+    const monthNames = ["Tháng 1", "Tháng 2", "Tháng 3", "Tháng 4", "Tháng 5", "Tháng 6", "Tháng 7", "Tháng 8", "Tháng 9", "Tháng 10", "Tháng 11", "Tháng 12"];
+    $('#mobileMonthQuickTitle').text(`${monthNames[month]} / ${year}`);
+
+    const firstDayOfMonth = new Date(year, month, 1);
+    const lastDayOfMonth = new Date(year, month + 1, 0);
+
+    // Thứ 2 là index 0
+    let startDayOfWeek = firstDayOfMonth.getDay() - 1;
+    if (startDayOfWeek === -1) startDayOfWeek = 6;
+
+    const totalDays = lastDayOfMonth.getDate();
+    const container = $('#mobileMonthGridDays');
+    if (!container.length) return;
+
+    let html = '';
+
+    // Ô trống đệm đầu tháng
+    for (let i = 0; i < startDayOfWeek; i++) {
+        html += `<div class="m-cal-day-cell empty"></div>`;
+    }
+
+    const today = new Date();
+    const selDate = currentDate || new Date();
+
+    for (let dayNum = 1; dayNum <= totalDays; dayNum++) {
+        const isToday = today.getFullYear() === year && today.getMonth() === month && today.getDate() === dayNum;
+        const isSelected = selDate.getFullYear() === year && selDate.getMonth() === month && selDate.getDate() === dayNum;
+
+        // Tìm deadline trong ngày
+        const dayDeadlines = (currentDeadlines || []).filter(item => {
+            const itemD = parseDeadlineDate(item.dueDate);
+            return itemD.getFullYear() === year && itemD.getMonth() === month && itemD.getDate() === dayNum;
+        });
+
+        let dotColor = null;
+        if (dayDeadlines.length > 0) {
+            let mostUrgent = null;
+            dayDeadlines.forEach(item => {
+                const daysLeft = calculateDaysLeft(item.dueDate, todayDate);
+                const st = getDeadlineColorStyle(daysLeft, item.isCompleted);
+                if (!mostUrgent || daysLeft < mostUrgent.daysLeft) {
+                    mostUrgent = { daysLeft, color: st.border };
+                }
+            });
+            if (mostUrgent) dotColor = mostUrgent.color;
+        }
+
+        const dotHtml = dotColor 
+            ? `<span class="m-cal-day-dot" style="background-color: ${dotColor};"></span>`
+            : '';
+
+        html += `
+            <div class="m-cal-day-cell ${isSelected ? 'is-selected' : ''} ${isToday ? 'is-today' : ''}" onclick="handleMobileMonthDayClick(${year}, ${month}, ${dayNum})">
+                <span class="m-cal-day-num">${dayNum}</span>
+                ${dotHtml}
+            </div>
+        `;
+    }
+
+    container.html(html);
+}
+window.renderMobileMonthView = renderMobileMonthView;
+
+// Khi bấm vào 1 ngày cụ thể trên lịch tháng: tự động chuyển về chế độ Ngày và xem ngày đó (theo yêu cầu)
+function handleMobileMonthDayClick(year, month, day) {
+    currentDate = new Date(year, month, day);
+    switchMobileMode('day');
+}
+window.handleMobileMonthDayClick = handleMobileMonthDayClick;
+
+// --- CHẾ ĐỘ XEM TUẦN (WEEK VIEW - BẢNG TUẦN NGUYÊN BẢN CỦA DỰ ÁN NHƯ HÌNH 3) ---
+function renderMobileWeekView() {
+    updateMobileToolbarLabel();
+    const monday = getMonday(currentDate || new Date());
+    const sun = new Date(monday);
+    sun.setDate(monday.getDate() + 6);
+    $('#mobileWeekRangeTitle').text(`${formatDate(monday)} - ${formatDate(sun)}`);
+
+    // Cập nhật tiêu đề thứ/ngày cho 7 cột (Thứ 2 -> Chủ nhật)
+    updateWeekHeader();
+
+    // Render toàn bộ deadline theo ca sáng/chiều/tối vào bảng tuần nguyên bản
+    renderWeekSchedule(currentDeadlines, monday, "0", todayDate);
+}
+window.renderMobileWeekView = renderMobileWeekView;
+
+// Điều hướng nhanh
+function mobileStepDate(direction) {
+    currentDate.setDate(currentDate.getDate() + direction);
+    renderMobileDayView();
+}
+window.mobileStepDate = mobileStepDate;
+
+function mobileGoToday() {
+    currentDate = new Date();
+    todayDate = new Date();
+    renderMobileActiveView();
+}
+window.mobileGoToday = mobileGoToday;
+
+function mobileStepMonth(direction) {
+    currentDate.setMonth(currentDate.getMonth() + direction);
+    renderMobileMonthView();
+}
+window.mobileStepMonth = mobileStepMonth;
+
+function mobileStepWeek(direction) {
+    currentDate.setDate(currentDate.getDate() + (direction * 7));
+    renderMobileWeekView();
+}
+window.mobileStepWeek = mobileStepWeek;
+
+function openMobileDatePicker() {
+    if (currentMobileMode === 'month') {
+        const picker = document.getElementById('mobileHiddenMonthPicker');
+        if (picker && picker.showPicker) {
+            picker.showPicker();
+        } else if (picker) {
+            picker.focus();
+            picker.click();
+        }
+    } else {
+        const picker = document.getElementById('mobileHiddenDatePicker');
+        if (picker && picker.showPicker) {
+            picker.showPicker();
+        } else if (picker) {
+            picker.focus();
+            picker.click();
+        }
+    }
+}
+window.openMobileDatePicker = openMobileDatePicker;
+
+function handleMobileDatePicked(val) {
+    if (!val) return;
+    const parts = val.split('-');
+    if (parts.length === 3) {
+        currentDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+        renderMobileDayView();
+    }
+}
+window.handleMobileDatePicked = handleMobileDatePicked;
+
+function handleMobileMonthPicked(val) {
+    if (!val) return;
+    const parts = val.split('-');
+    if (parts.length === 2) {
+        currentDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, 1);
+        renderMobileMonthView();
+    }
+}
+window.handleMobileMonthPicked = handleMobileMonthPicked;
 
 function toggleMobileFabMenu() {
     $('#mobileFabMenu').stop(true, true).slideToggle(140);
 }
 window.toggleMobileFabMenu = toggleMobileFabMenu;
-
-function navPrevWeek() {
-    $('#btn_TroVe').click();
-}
-window.navPrevWeek = navPrevWeek;
-
-function navNextWeek() {
-    $('#btn_Tiep').click();
-}
-window.navNextWeek = navNextWeek;
-
-function navToday() {
-    $('#btn_HienTai').click();
-}
-window.navToday = navToday;
-
-function renderMobileDayAgendaView() {
-    const monday = getMonday(currentDate);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const weekDates = [];
-    for (let i = 0; i < 7; i++) {
-        const d = new Date(monday);
-        d.setDate(monday.getDate() + i);
-        d.setHours(0, 0, 0, 0);
-        weekDates.push(d);
-    }
-
-    // Nếu chưa chọn ngày hoặc chuyển tuần, mặc định chọn ngày hôm nay nếu nằm trong tuần, hoặc Thứ 2 (index 0)
-    if (selectedMobileDayIndex < 0 || selectedMobileDayIndex > 6) {
-        let todayIdx = -1;
-        for (let i = 0; i < 7; i++) {
-            if (weekDates[i].getTime() === today.getTime()) {
-                todayIdx = i;
-                break;
-            }
-        }
-        selectedMobileDayIndex = todayIdx !== -1 ? todayIdx : 0;
-    }
-
-    const selDate = weekDates[selectedMobileDayIndex];
-
-    // Cập nhật tiêu đề tháng & tuần
-    const monthNames = ["Tháng 1", "Tháng 2", "Tháng 3", "Tháng 4", "Tháng 5", "Tháng 6", "Tháng 7", "Tháng 8", "Tháng 9", "Tháng 10", "Tháng 11", "Tháng 12"];
-    $('#mobileMonthYearText').text(`${monthNames[selDate.getMonth()]} / ${selDate.getFullYear()}`);
-    $('#mobileWeekSubtitle').text(`Tuần ${getWeekNumber(selDate)}`);
-
-    // Render thanh 7 ngày (Day Strip)
-    const dayShortNames = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
-    let stripHtml = '';
-
-    for (let i = 0; i < 7; i++) {
-        const d = weekDates[i];
-        const isToday = d.getTime() === today.getTime();
-        const isSelected = i === selectedMobileDayIndex;
-        const dayNum = String(d.getDate()).padStart(2, '0');
-
-        // Tìm các deadline của ngày này để tạo chấm màu
-        let dotColor = 'transparent';
-        const dayDeadlines = currentDeadlines.filter(item => {
-            const itemDate = parseDeadlineDate(item.dueDate);
-            itemDate.setHours(0, 0, 0, 0);
-            return itemDate.getTime() === d.getTime();
-        });
-
-        if (dayDeadlines.length > 0) {
-            let mostUrgentStyle = null;
-            dayDeadlines.forEach(item => {
-                const dl = calculateDaysLeft(item.dueDate, todayDate);
-                const st = getDeadlineColorStyle(dl, item.isCompleted);
-                if (!mostUrgentStyle || dl < mostUrgentStyle.dl) {
-                    mostUrgentStyle = { dl, color: st.border };
-                }
-            });
-            if (mostUrgentStyle) dotColor = mostUrgentStyle.color;
-        }
-
-        stripHtml += `
-            <div class="m-day-pill ${isToday ? 'is-today' : ''} ${isSelected ? 'active' : ''}" onclick="selectMobileDay(${i})">
-                <span class="m-day-name">${dayShortNames[i]}</span>
-                <span class="m-day-num">${dayNum}</span>
-                <span class="m-day-dot" style="background-color: ${dotColor};"></span>
-            </div>
-        `;
-    }
-    $('#mobileDayStrip').html(stripHtml);
-
-    // Render 3 ca của ngày đang chọn
-    renderMobileSessions(selDate);
-}
-
-function renderMobileSessions(targetDate) {
-    const targetTime = targetDate.getTime();
-    const dayDeadlines = currentDeadlines.filter(item => {
-        const itemDate = parseDeadlineDate(item.dueDate);
-        itemDate.setHours(0, 0, 0, 0);
-        return itemDate.getTime() === targetTime;
-    });
-
-    const sessions = {
-        sang: dayDeadlines.filter(item => item.session === 'sang'),
-        chieu: dayDeadlines.filter(item => item.session === 'chieu'),
-        toi: dayDeadlines.filter(item => item.session === 'toi')
-    };
-
-    const sessionKeys = ['sang', 'chieu', 'toi'];
-    sessionKeys.forEach(sess => {
-        const items = sessions[sess];
-        $(`#m-count-${sess}`).text(items.length);
-        if (items.length > 0) {
-            $(`#m-count-${sess}`).addClass('has-items');
-            let cardsHtml = '';
-            items.forEach(item => {
-                const daysLeft = calculateDaysLeft(item.dueDate, todayDate);
-                const styleInfo = getDeadlineColorStyle(daysLeft, item.isCompleted);
-                const dueObj = parseDeadlineDate(item.dueDate);
-                const timeOnly = `${String(dueObj.getHours()).padStart(2, '0')}:${String(dueObj.getMinutes()).padStart(2, '0')}`;
-
-                let badgeText = '';
-                if (daysLeft < 0) badgeText = `Quá hạn ${Math.abs(daysLeft)}d`;
-                else if (daysLeft === 0) badgeText = `Hôm nay`;
-                else badgeText = `Còn ${daysLeft}d`;
-
-                let syncStatusHtml = '';
-                if (item._syncStatus === 'pending') {
-                    syncStatusHtml = `<span style="color: #1a73e8; margin-left: 3px;"><i class="fa fa-refresh fa-spin"></i></span>`;
-                } else if (item._syncStatus === 'error') {
-                    syncStatusHtml = `<span style="color: #d93025; margin-left: 3px;"><i class="fa fa-exclamation-triangle"></i></span>`;
-                }
-
-                const checkBtn = item.isCompleted 
-                    ? `<span class="deadline-check-btn completed" onclick="toggleDeadlineComplete('${item.id}', event)" title="Đã xong / Bỏ đánh dấu">
-                        <i class="fa fa-check-circle" style="color: #495057; font-size: 14px;"></i>
-                       </span>` 
-                    : '';
-
-                cardsHtml += `
-                    <div class="m-deadline-card" onclick="showDeadlineDetail('${item.id}', event, this)" style="background-color: ${styleInfo.bg}; border-color: ${styleInfo.border}; color: ${styleInfo.text};">
-                        <div class="m-card-header">
-                            <div class="m-card-time" style="color: ${styleInfo.text}; display: flex; align-items: center; gap: 4px;">
-                                ${checkBtn}
-                                <i class="fa fa-clock-o"></i> <span>${timeOnly}</span>
-                                ${syncStatusHtml}
-                            </div>
-                            <span class="m-card-badge" style="color: ${styleInfo.text}; border-color: ${styleInfo.border};">
-                                ${badgeText}
-                            </span>
-                        </div>
-                        <div class="m-card-title" style="color: ${styleInfo.text};">
-                            ${escapeHtml(item.title)}
-                        </div>
-                        <div class="m-card-footer">
-                            <span class="m-card-cat" style="color: ${item.category === 'group' ? '#0f9d58' : '#1a73e8'};">
-                                <i class="fa ${item.category === 'group' ? 'fa-users' : 'fa-user'}"></i>
-                                ${item.category === 'group' ? 'Cả nhóm' : 'Cá nhân'}
-                            </span>
-                            <span class="m-card-author">
-                                ${item.userName ? escapeHtml(item.userName) : ''}
-                            </span>
-                        </div>
-                    </div>
-                `;
-            });
-            $(`#m-cards-${sess}`).html(cardsHtml);
-        } else {
-            $(`#m-count-${sess}`).removeClass('has-items');
-            $(`#m-cards-${sess}`).html('<div class="m-empty-session">Không có deadline ca này</div>');
-        }
-    });
-}
-
-$(document).on('click', function(e) {
-    if (!$(e.target).closest('#mobileFabContainer').length) {
-        $('#mobileFabMenu').slideUp(120);
-    }
-});
 
 function renderCurrentView() {
     todayDate = new Date(); // Luôn lấy thời gian thực của máy tính
@@ -1279,7 +1398,7 @@ function renderCurrentView() {
     } else {
         renderMonthSchedule(currentDeadlines, currentDate.getFullYear(), currentDate.getMonth(), "0", todayDate);
     }
-    renderMobileDayAgendaView();
+    renderMobileActiveView();
 
     const picker = $("#dateNgayXemLich").data("kendoDatePicker");
     if (picker) {
@@ -2022,6 +2141,7 @@ $(document).ready(function () {
     updateNotifBadge();
     renderNotificationList();
     initServiceWorker();
+    switchMobileMode('day');
 
     // Lọc tìm kiếm theo từ khóa trực tiếp từ SQL
     let searchTimeout = null;
