@@ -20,7 +20,7 @@
     <link rel="stylesheet" type="text/css" href="../../shared/css/toastr.min.css">
 
     <!-- CSS RIÊNG CỦA MODULE DEADLINE TRACKER -->
-    <link rel="stylesheet" type="text/css" href="./deadline.css?v=1.0.1">
+    <link rel="stylesheet" type="text/css" href="./deadline.css?v=1.0.5">
 </head>
 <body>
     <div id="focus-overlay"></div>
@@ -47,10 +47,6 @@
                             <span class="brand-subtitle">PORTAL QUẢN LÝ DEADLINE</span>
                         </div>
                     </a>
-                </div>
-
-                <div class="menu-btn">
-                    <a href="javascript:void(0)" title=""><i class="fa fa-bars"></i></a>
                 </div>
             </div>
 
@@ -91,8 +87,8 @@
             <div class="row">
                 
 <!-- THANH ĐIỀU KHIỂN BÊN TRÁI (SIDEBAR PORTAL CHUNG) -->
-<div class="col-md-2 d-none d-sm-block">
-    <div class="box-df p-0">
+<div class="col-md-2 col-12" id="sidebarColumn">
+    <div class="box-df p-0 sidebar-box-df">
         <div id="accordion-menu" class="accordion-menu">
             <ul>
                 <li>
@@ -126,8 +122,8 @@
 </div>
 
 <!-- NỘI DUNG CHÍNH (COL-MD-10): MODULE DEADLINE TRACKER -->
-<div class="col-md-10 col-xs-12">
-    <div class="box-df">
+<div class="col-md-10 col-12">
+    <div class="box-df main-content-box">
         <div class="portlet">
             <!-- HÀNG 1: TIÊU ĐỀ + THANH TÌM KIẾM TRUY VẤN SQL KÉO DÀI HẾT BẢNG -->
             <div class="portlet-header-row" style="display: flex; align-items: center; gap: 15px; margin-bottom: 14px; width: 100%;">
@@ -183,8 +179,69 @@
                 </div>
             </div>
 
+            <!-- GIAO DIỆN CHUYÊN BIỆT CHO ĐIỆN THOẠI (HIỆN TRÊN MÀN HÌNH <= 768px) -->
+            <div id="mobileDayAgendaView" class="mobile-only-view">
+                <!-- 1. Thanh điều hướng tuần (Tuần trước / Tiếp / Tên tháng năm) -->
+                <div class="mobile-week-navigator">
+                    <div class="mobile-nav-title">
+                        <span id="mobileMonthYearText">Tháng 10 / 2026</span>
+                        <small id="mobileWeekSubtitle" style="color: #5f6368; font-size: 11px;">Tuần 41</small>
+                    </div>
+                    <div class="mobile-nav-buttons">
+                        <button type="button" class="btn-m-nav" onclick="navPrevWeek()" title="Tuần trước"><i class="fa fa-chevron-left"></i></button>
+                        <button type="button" class="btn-m-nav btn-m-today" onclick="navToday()" title="Hôm nay">Hôm nay</button>
+                        <button type="button" class="btn-m-nav" onclick="navNextWeek()" title="Tuần sau"><i class="fa fa-chevron-right"></i></button>
+                    </div>
+                </div>
+
+                <!-- 2. Thanh trượt 7 ngày trong tuần (Day Strip) -->
+                <div class="mobile-day-strip" id="mobileDayStrip">
+                    <!-- Render động 7 ngày: T2 -> CN -->
+                </div>
+
+                <!-- 3. Chuyển chế độ xem phụ (Xem theo ca vs Xem bảng tuần) -->
+                <div class="mobile-view-toggle">
+                    <button type="button" id="btn_m_view_day" class="active" onclick="switchMobileSubView('day')">
+                        <i class="fa fa-calendar-check-o"></i> Theo ca trong ngày
+                    </button>
+                    <button type="button" id="btn_m_view_table" onclick="switchMobileSubView('table')">
+                        <i class="fa fa-table"></i> Toàn bộ bảng tuần
+                    </button>
+                </div>
+
+                <!-- 4. Danh sách các ca trong ngày được chọn -->
+                <div id="mobileDaySessionsContainer" class="mobile-sessions-container">
+                    <!-- Ca Sáng -->
+                    <div class="mobile-session-group" id="m-session-sang">
+                        <div class="session-header">
+                            <div class="session-title"><i class="fa fa-sun-o" style="color: #f5a623;"></i> Ca Sáng <small>(Trước 12:00)</small></div>
+                            <span class="session-badge" id="m-count-sang">0</span>
+                        </div>
+                        <div class="session-cards" id="m-cards-sang"></div>
+                    </div>
+
+                    <!-- Ca Chiều -->
+                    <div class="mobile-session-group" id="m-session-chieu">
+                        <div class="session-header">
+                            <div class="session-title"><i class="fa fa-cloud" style="color: #17a2b8;"></i> Ca Chiều <small>(12:00 - 18:00)</small></div>
+                            <span class="session-badge" id="m-count-chieu">0</span>
+                        </div>
+                        <div class="session-cards" id="m-cards-chieu"></div>
+                    </div>
+
+                    <!-- Ca Tối -->
+                    <div class="mobile-session-group" id="m-session-toi">
+                        <div class="session-header">
+                            <div class="session-title"><i class="fa fa-moon-o" style="color: #1a73e8;"></i> Ca Tối <small>(18:00 - 23:59)</small></div>
+                            <span class="session-badge" id="m-count-toi">0</span>
+                        </div>
+                        <div class="session-cards" id="m-cards-toi"></div>
+                    </div>
+                </div>
+            </div>
+
             <!-- BẢNG DEADLINE THEO TUẦN -->
-            <div id="viewLichTheoTuan">
+            <div id="viewLichTheoTuan" class="desktop-active">
                 <div class="table-responsive">
                     <table class="fl-table table table-bordered text-center no-footer dtr-inline" width="100%" role="grid">
                         <thead>
@@ -239,9 +296,9 @@
             </div>
 
             <!-- BẢNG DEADLINE THEO THÁNG (LƯỚI 7 CỘT X 5-6 HÀNG) -->
-            <div id="viewLichTheoThang" style="display: none;">
+            <div id="viewLichTheoThang" class="desktop-inactive">
                 <div class="table-responsive">
-                    <table class="fl-table table table-bordered text-center no-footer dtr-inline" width="100%" role="grid">
+                    <table class="fl-table table table-bordered text-center no-footer dtr-inline month-calendar-table" width="100%" role="grid">
                         <thead>
                             <tr role="row">
                                 <th style="width: 14.28%;">Thứ 2</th>
@@ -249,14 +306,25 @@
                                 <th style="width: 14.28%;">Thứ 4</th>
                                 <th style="width: 14.28%;">Thứ 5</th>
                                 <th style="width: 14.28%;">Thứ 6</th>
-                                <th style="width: 14.28%;">Thứ 7</th>
-                                <th style="width: 14.28%;">Chủ nhật</th>
+                                <th style="width: 14.28%;" class="th-weekend">Thứ 7</th>
+                                <th style="width: 14.28%;" class="th-weekend">Chủ nhật</th>
                             </tr>
                         </thead>
                         <tbody id="monthGridBody">
                             <!-- Render tự động từ CSDL SQL -->
                         </tbody>
                     </table>
+                </div>
+
+                <!-- CỬA SỔ XEM TẤT CẢ DEADLINE CỦA MỘT NGÀY TRÊN LỊCH THÁNG (POPOVER) -->
+                <div id="monthDayListPopover" class="month-day-list-popover" style="display: none;">
+                    <div class="popover-header">
+                        <span id="monthDayListTitle" style="font-weight: 700; font-size: 13px; color: #202124;"></span>
+                        <button type="button" class="btn-popover-close" onclick="closeMonthDayListPopover()" title="Đóng"><i class="fa fa-times"></i></button>
+                    </div>
+                    <div id="monthDayListItems" class="popover-body">
+                        <!-- Render động danh sách deadline -->
+                    </div>
                 </div>
             </div>
 
@@ -295,6 +363,21 @@
     </div>
 </div>
 
+</div>
+
+<!-- NÚT TRÒN NỔI TẠO DEADLINE CHO ĐIỆN THOẠI (FAB) -->
+<div id="mobileFabContainer" class="mobile-fab-container">
+    <div id="mobileFabMenu" class="mobile-fab-menu" style="display: none;">
+        <button type="button" onclick="openCreateDeadlineModal('personal'); toggleMobileFabMenu();" class="fab-menu-item fab-personal">
+            <i class="fa fa-user"></i> <span>Tạo Cá nhân</span>
+        </button>
+        <button type="button" onclick="openCreateDeadlineModal('group'); toggleMobileFabMenu();" class="fab-menu-item fab-group">
+            <i class="fa fa-users"></i> <span>Tạo Cả nhóm</span>
+        </button>
+    </div>
+    <button type="button" id="mobileFabBtn" onclick="toggleMobileFabMenu()" class="mobile-fab-btn" title="Tạo deadline">
+        <i class="fa fa-plus"></i>
+    </button>
 </div>
 
 <!-- CỬA SỔ MODAL TẠO & SỬA DEADLINE (CHỈ MỞ KHI NHẤN NÚT TẠO HOẶC NHẤN CÂY BÚT CHÌ) -->
@@ -502,7 +585,7 @@
 <script type="text/javascript" src="../../shared/js/toastr.min.js"></script>
 <script type="text/javascript" src="../../shared/js/bootstrap.bundle.min.js"></script>
 <script type="text/javascript" src="../../shared/js/main.js"></script>
-<script type="text/javascript" src="./deadline.js?v=1.0.1"></script>
+<script type="text/javascript" src="./deadline.js?v=1.0.5"></script>
 
 </body>
 </html>

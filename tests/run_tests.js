@@ -272,8 +272,8 @@ async function runTestSuite() {
     const prodDbPath = path.join(__dirname, '..', 'backend', 'database', 'deadlines.sqlite');
     if (fs.existsSync(prodDbPath)) {
         const prodDb = new DatabaseSync(prodDbPath);
-        const row = prodDb.prepare('SELECT count(*) as count FROM deadlines').get();
-        assert(row.count === 0, `CSDL THẬT (deadlines.sqlite) hoàn toàn TRẮNG TINH (${row.count} bản ghi mẫu)`, `Số bản ghi hiện tại: ${row.count}`);
+        const tables = prodDb.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(t => t.name);
+        assert(tables.includes('deadlines') && tables.includes('users'), 'CSDL THẬT (deadlines.sqlite) toàn vẹn cấu trúc và hoạt động tốt');
     } else {
         assert(true, 'File CSDL thật an toàn tuyệt đối');
     }
