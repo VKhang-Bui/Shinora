@@ -70,12 +70,12 @@ function calculateDaysLeft(dueDateStr, baseDate) {
 }
 
 function getDeadlineColorStyle(daysLeft, isCompleted = false) {
-    if (isCompleted || daysLeft < 0) return { label: "khác", bg: "#e9ecef" };
-    if (daysLeft <= 3) return { label: "3 ngày", bg: "#ffa39e" };
-    if (daysLeft <= 7) return { label: "1 tuần", bg: "#ffd591" };
-    if (daysLeft <= 21) return { label: "3 tuần", bg: "#ffe58f" };
-    if (daysLeft <= 60) return { label: "2 tháng", bg: "#eaff8f" };
-    return { label: "Dài hạn", bg: "#b7eb8f" };
+    if (isCompleted || daysLeft < 0) return { label: "khác", bg: "#f8fafc" };
+    if (daysLeft <= 3) return { label: "3 ngày", bg: "#fff1f0" };
+    if (daysLeft <= 7) return { label: "1 tuần", bg: "#fff7e6" };
+    if (daysLeft <= 21) return { label: "3 tuần", bg: "#feffe6" };
+    if (daysLeft <= 60) return { label: "2 tháng", bg: "#f6ffed" };
+    return { label: "Dài hạn", bg: "#f0fdf4" };
 }
 
 async function runTestSuite() {
@@ -272,31 +272,31 @@ async function runTestSuite() {
     // Test 5.1: Quá hạn (< 0 ngày) -> Màu Xám (khác)
     const daysPass = calculateDaysLeft('2026-10-02T09:00:00', baseToday);
     const colorPass = getDeadlineColorStyle(daysPass, false);
-    assert(colorPass.label === 'khác' && colorPass.bg === '#e9ecef', 'Quá hạn (-3 ngày) -> Gán màu XÁM [khác]');
+    assert(colorPass.label === 'khác' && colorPass.bg === '#f8fafc', 'Quá hạn (-3 ngày) -> Gán màu XÁM [khác]');
 
     // Test 5.2: Gấp (<= 3 ngày) -> Màu Đỏ
     const daysRed = calculateDaysLeft('2026-10-07T20:00:00', baseToday);
     const colorRed = getDeadlineColorStyle(daysRed, false);
-    assert(colorRed.label === '3 ngày' && colorRed.bg === '#ffa39e', 'Còn 2 ngày -> Gán màu ĐỎ [3 ngày]');
+    assert(colorRed.label === '3 ngày' && colorRed.bg === '#fff1f0', 'Còn 2 ngày -> Gán màu ĐỎ [3 ngày]');
 
     // Test 5.3: 1 tuần (4 - 7 ngày) -> Màu Cam
     const daysOrange = calculateDaysLeft('2026-10-11T09:00:00', baseToday);
     const colorOrange = getDeadlineColorStyle(daysOrange, false);
-    assert(colorOrange.label === '1 tuần' && colorOrange.bg === '#ffd591', 'Còn 6 ngày -> Gán màu CAM [1 tuần]');
+    assert(colorOrange.label === '1 tuần' && colorOrange.bg === '#fff7e6', 'Còn 6 ngày -> Gán màu CAM [1 tuần]');
 
     // Test 5.4: 3 tuần (8 - 21 ngày) -> Màu Vàng
     const daysYellow = calculateDaysLeft('2026-10-22T15:00:00', baseToday);
     const colorYellow = getDeadlineColorStyle(daysYellow, false);
-    assert(colorYellow.label === '3 tuần' && colorYellow.bg === '#ffe58f', 'Còn 17 ngày -> Gán màu VÀNG [3 tuần]');
+    assert(colorYellow.label === '3 tuần' && colorYellow.bg === '#feffe6', 'Còn 17 ngày -> Gán màu VÀNG [3 tuần]');
 
     // Test 5.5: 2 tháng (22 - 60 ngày) -> Màu Xanh chanh
     const daysGreen = calculateDaysLeft('2026-11-20T10:00:00', baseToday);
     const colorGreen = getDeadlineColorStyle(daysGreen, false);
-    assert(colorGreen.label === '2 tháng' && colorGreen.bg === '#eaff8f', 'Còn 46 ngày -> Gán màu XANH [2 tháng]');
+    assert(colorGreen.label === '2 tháng' && colorGreen.bg === '#f6ffed', 'Còn 46 ngày -> Gán màu XANH [2 tháng]');
 
     // Test 5.6: Đã xong (isCompleted = 1) dù còn ngày -> Vẫn màu Xám
     const colorDone = getDeadlineColorStyle(10, true);
-    assert(colorDone.label === 'khác' && colorDone.bg === '#e9ecef', 'Đã hoàn thành (isCompleted = 1) -> Tự động chuyển màu XÁM [khác]');
+    assert(colorDone.label === 'khác' && colorDone.bg === '#f8fafc', 'Đã hoàn thành (isCompleted = 1) -> Tự động chuyển màu XÁM [khác]');
 
     // Test 5.7: Mô phỏng gộp 2 Phân khu Local Cache (Khu A: Confirmed + Khu B: Pending)
     const mockKhuA = [{ id: 'dl-1', title: 'Task Đã lưu', dueDate: '2026-10-10' }];
@@ -556,6 +556,23 @@ async function runTestSuite() {
 
     const resVer = await request({ host: HOST, port: PORT, path: '/api/version', method: 'GET' });
     assert(resVer.statusCode === 200 && typeof resVer.json.version === 'string', 'GET /api/version trả về phiên bản');
+
+    // [Nhóm 11] Kiểm thử cú pháp client-side JS (tránh lỗi cú pháp làm hỏng tương tác trình duyệt)
+    console.log(`\n${BOLD}[Nhóm 11] Kiểm tra cú pháp Frontend JavaScript${RESET}`);
+    const vm = require('vm');
+    const clientFiles = [
+        'frontend/pages/deadline/deadline.js',
+        'frontend/shared/js/task-types.js'
+    ];
+    for (const relPath of clientFiles) {
+        try {
+            const code = fs.readFileSync(path.join(__dirname, '..', relPath), 'utf8');
+            new vm.Script(code);
+            assert(true, `Cú pháp file ${relPath} hợp lệ (0 lỗi cú pháp)`);
+        } catch (err) {
+            assert(false, `Cú pháp file ${relPath} bị lỗi: ${err.message}`);
+        }
+    }
 
 
     // -------------------------------------------------------------
