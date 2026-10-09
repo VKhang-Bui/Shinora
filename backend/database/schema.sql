@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS deadlines (
     group_name NVARCHAR(255),
     group_link VARCHAR(500),
     description TEXT,
+    task_type TEXT NOT NULL DEFAULT 'submit',
+    end_time VARCHAR(5),
     is_completed INTEGER DEFAULT 0 CHECK(is_completed IN (0, 1)),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,

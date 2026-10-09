@@ -20,7 +20,7 @@
     <link rel="stylesheet" type="text/css" href="../../shared/css/toastr.min.css">
 
     <!-- CSS RIÊNG CỦA MODULE DEADLINE TRACKER -->
-    <link rel="stylesheet" type="text/css" href="./deadline.css?v=1.1.5">
+    <link rel="stylesheet" type="text/css" href="./deadline.css?v=1.2.3">
 </head>
 <body>
     <div id="focus-overlay"></div>
@@ -393,6 +393,10 @@
                         <span style="width: 16px; height: 16px; background-color: #eaff8f; border: 1px solid #a0d911; border-radius: 3px; display: inline-block;"></span>
                         <label style="margin: 0; font-size: 13px; font-weight: 600; color: #3f6600;">2 tháng</label>
                     </li>
+                    <li style="display: flex; align-items: center; gap: 8px;">
+                        <span style="width: 16px; height: 16px; background-color: rgba(0, 150, 136, 0.88); border: 1px solid #00796b; border-radius: 3px; display: inline-block;"></span>
+                        <label style="margin: 0; font-size: 13px; font-weight: 600; color: #00796b;">Thực hành</label>
+                    </li>
                 </ul>
             </div>
 
@@ -465,6 +469,9 @@
             </button>
         </div>
 
+        <!-- LOẠI CÔNG VIỆC (task_type): tự sinh từ TaskTypes trong task-types.js -->
+        <div id="modalTaskTypeTabs" style="display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;"></div>
+
         <!-- THÔNG TIN PHÂN BỔ THÀNH VIÊN CHO CẢ NHÓM HOẶC CÁ NHÂN -->
         <div id="modalCategoryNotice" style="margin-bottom: 16px; font-size: 12px; color: #5f6368;">
             <div id="noticePersonal" style="display: flex; align-items: center; gap: 6px;">
@@ -507,6 +514,12 @@
                     <option value="23:59">
                 </datalist>
             </div>
+            <span id="modalEndTimeWrap" style="display: none; align-items: center; gap: 8px;">
+                <span style="color: #5f6368; font-weight: 600;">&ndash;</span>
+                <span style="background: #f1f3f4; border-radius: 4px; padding: 3px 8px; display: inline-flex; align-items: center;">
+                    <input type="text" id="modalEndTimeInput" value="11:00" title="Giờ kết thúc (HH:MM)" style="width: 52px; background: transparent; border: none; outline: none; font-weight: 600; font-size: 13px; text-align: center; color: #1f1f1f;" list="modalTimeList">
+                </span>
+            </span>
 
             <!-- POPUP LỊCH MINI -->
             <div id="modalCalendarPopup" style="display: none; position: absolute; left: 32px; top: 38px; background: #ffffff; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.22); border: 1px solid #dadce0; padding: 12px; z-index: 100000; width: 260px;">
@@ -860,7 +873,8 @@
 <script type="text/javascript" src="../../shared/js/bootstrap.bundle.min.js"></script>
 <script type="text/javascript" src="../../shared/js/html2canvas.min.js"></script>
 <script type="text/javascript" src="../../shared/js/main.js"></script>
-<script type="text/javascript" src="./deadline.js?v=1.1.8"></script>
+<script type="text/javascript" src="../../shared/js/task-types.js?v=1.2.3"></script>
+<script type="text/javascript" src="./deadline.js?v=1.2.3"></script>
 
 </body>
 </html>

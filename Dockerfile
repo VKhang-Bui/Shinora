@@ -17,6 +17,8 @@ RUN mkdir -p /app/backend/database
 # Cổng mặc định
 EXPOSE 3000
 
+ARG APP_VERSION=dev
+ENV APP_VERSION=$APP_VERSION
 ENV PORT=3000
 ENV NODE_ENV=production
 

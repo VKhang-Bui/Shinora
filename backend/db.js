@@ -38,6 +38,8 @@ try {
     if (!colNames.includes('group_name')) db.exec("ALTER TABLE deadlines ADD COLUMN group_name NVARCHAR(255);");
     if (!colNames.includes('group_link')) db.exec("ALTER TABLE deadlines ADD COLUMN group_link VARCHAR(500);");
     if (!colNames.includes('description')) db.exec("ALTER TABLE deadlines ADD COLUMN description TEXT;");
+    if (!colNames.includes('task_type')) db.exec("ALTER TABLE deadlines ADD COLUMN task_type TEXT NOT NULL DEFAULT 'submit';");
+    if (!colNames.includes('end_time')) db.exec("ALTER TABLE deadlines ADD COLUMN end_time VARCHAR(5);");
     db.exec("CREATE INDEX IF NOT EXISTS idx_deadlines_user_id ON deadlines(user_id);");
 
     // Tạo bảng feedbacks nếu chưa có

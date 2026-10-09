@@ -1,4 +1,11 @@
 // api/deadlines.js - Vercel Serverless Function kết nối Supabase REST API
+const TaskTypes = require('../frontend/shared/js/task-types');
+
+function startHHMM(dueDate) {
+    const m = /[T ](\d{2}:\d{2})/.exec(String(dueDate || ''));
+    return m ? m[1] : null;
+}
+
 module.exports = async (req, res) => {
     // Cho phép CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -58,6 +65,8 @@ function sanitizeDueDate(val) {
                         groupName: item.group_name || null,
                         groupLink: item.group_link || null,
                         description: item.description || null,
+                        taskType: item.task_type || 'submit',
+                        endTime: item.end_time || null,
                         isCompleted: item.is_completed ? 1 : 0
                     }
                 });
@@ -81,6 +90,8 @@ function sanitizeDueDate(val) {
                     groupName: item.group_name || null,
                     groupLink: item.group_link || null,
                     description: item.description || null,
+                    taskType: item.task_type || 'submit',
+                    endTime: item.end_time || null,
                     isCompleted: item.is_completed ? 1 : 0
                 }));
 
@@ -121,6 +132,8 @@ function sanitizeDueDate(val) {
             if (body.groupName !== undefined) payload.group_name = body.groupName;
             if (body.groupLink !== undefined) payload.group_link = body.groupLink;
             if (body.description !== undefined) payload.description = body.description;
+            payload.task_type = TaskTypes.normalize(body.taskType);
+            payload.end_time = TaskTypes.normalizeEndTime(payload.task_type, body.endTime, startHHMM(body.dueDate));
 
             const resp = await fetch(`${SUPABASE_URL}/rest/v1/deadlines`, {
                 method: 'POST',
@@ -144,6 +157,8 @@ function sanitizeDueDate(val) {
                     groupName: created.group_name || body.groupName || null,
                     groupLink: created.group_link || body.groupLink || null,
                     description: created.description || body.description || null,
+                    taskType: created.task_type || 'submit',
+                    endTime: created.end_time || null,
                     isCompleted: created.is_completed ? 1 : 0
                 }
             });
@@ -165,6 +180,10 @@ function sanitizeDueDate(val) {
             if (body.groupLink !== undefined) payload.group_link = body.groupLink;
             if (body.description !== undefined) payload.description = body.description;
             if (body.isCompleted !== undefined) payload.is_completed = body.isCompleted ? 1 : 0;
+            if (body.taskType !== undefined || body.endTime !== undefined) {
+                payload.task_type = TaskTypes.normalize(body.taskType);
+                payload.end_time = TaskTypes.normalizeEndTime(payload.task_type, body.endTime, startHHMM(body.dueDate));
+            }
             payload.updated_at = new Date().toISOString();
 
             const resp = await fetch(`${SUPABASE_URL}/rest/v1/deadlines?id=eq.${encodeURIComponent(id)}`, {
@@ -189,6 +208,8 @@ function sanitizeDueDate(val) {
                     groupName: updated.group_name || null,
                     groupLink: updated.group_link || null,
                     description: updated.description || null,
+                    taskType: updated.task_type || 'submit',
+                    endTime: updated.end_time || null,
                     isCompleted: updated.is_completed ? 1 : 0
                 }
             });

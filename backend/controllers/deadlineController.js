@@ -1,4 +1,11 @@
 const db = require('../db');
+const TaskTypes = require('../../frontend/shared/js/task-types');
+
+// Lấy 'HH:MM' từ chuỗi due_date để so sánh với giờ kết thúc
+function startHHMM(dueDate) {
+    const m = /[T ](\d{2}:\d{2})/.exec(String(dueDate || ''));
+    return m ? m[1] : null;
+}
 
 /**
  * Controller xử lý các nghiệp vụ truy vấn SQL cho Deadlines
@@ -19,6 +26,8 @@ const deadlineController = {
                 group_name as groupName,
                 group_link as groupLink,
                 description,
+                task_type as taskType,
+                end_time as endTime,
                 is_completed as isCompleted, 
                 created_at, 
                 updated_at
@@ -63,6 +72,8 @@ const deadlineController = {
                 group_name as groupName,
                 group_link as groupLink,
                 description,
+                task_type as taskType,
+                end_time as endTime,
                 is_completed as isCompleted, 
                 created_at, 
                 updated_at
@@ -74,7 +85,7 @@ const deadlineController = {
 
     // 3. Thêm mới deadline vào SQL
     create: (data) => {
-        const { id, title, dueDate, session, category, userId, userName, assignees, groupName, group_name, groupLink, group_link, description, isCompleted } = data;
+        const { id, title, dueDate, session, category, userId, userName, assignees, groupName, group_name, groupLink, group_link, description, isCompleted, taskType, endTime } = data;
         const dlId = id || ('dl-' + Date.now());
         const cat = category || 'personal';
         const uId = userId || null;
@@ -84,12 +95,14 @@ const deadlineController = {
         const gLink = (groupLink !== undefined ? groupLink : group_link) || null;
         const desc = description || null;
         const completed = isCompleted ? 1 : 0;
+        const tType = TaskTypes.normalize(taskType);
+        const tEnd = TaskTypes.normalizeEndTime(tType, endTime, startHHMM(dueDate));
 
         const insert = db.prepare(`
-            INSERT INTO deadlines (id, title, due_date, session, category_id, user_id, user_name, assignees, group_name, group_link, description, is_completed)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO deadlines (id, title, due_date, session, category_id, user_id, user_name, assignees, group_name, group_link, description, task_type, end_time, is_completed)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
-        insert.run(dlId, title, dueDate, session, cat, uId, uName, asg, gName, gLink, desc, completed);
+        insert.run(dlId, title, dueDate, session, cat, uId, uName, asg, gName, gLink, desc, tType, tEnd, completed);
 
         return deadlineController.getById(dlId);
     },
@@ -99,7 +112,7 @@ const deadlineController = {
         const current = deadlineController.getById(id);
         if (!current) return null;
 
-        const { title, dueDate, session, category, userId, userName, assignees, groupName, group_name, groupLink, group_link, description, isCompleted } = data;
+        const { title, dueDate, session, category, userId, userName, assignees, groupName, group_name, groupLink, group_link, description, isCompleted, taskType, endTime } = data;
 
         const newTitle = title !== undefined ? title : current.title;
         const newDueDate = dueDate !== undefined ? dueDate : current.dueDate;
@@ -114,6 +127,8 @@ const deadlineController = {
         const newGroupLink = inputGLink !== undefined ? inputGLink : current.groupLink;
         const newDescription = description !== undefined ? description : current.description;
         const newCompleted = isCompleted !== undefined ? (isCompleted ? 1 : 0) : current.isCompleted;
+        const newTaskType = TaskTypes.normalize(taskType !== undefined ? taskType : current.taskType);
+        const newEndTime = TaskTypes.normalizeEndTime(newTaskType, endTime !== undefined ? endTime : current.endTime, startHHMM(newDueDate));
 
         const update = db.prepare(`
             UPDATE deadlines
@@ -127,11 +142,13 @@ const deadlineController = {
                 group_name = ?,
                 group_link = ?,
                 description = ?,
+                task_type = ?,
+                end_time = ?,
                 is_completed = ?, 
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
         `);
-        update.run(newTitle, newDueDate, newSession, newCategory, newUserId, newUserName, newAssignees, newGroupName, newGroupLink, newDescription, newCompleted, id);
+        update.run(newTitle, newDueDate, newSession, newCategory, newUserId, newUserName, newAssignees, newGroupName, newGroupLink, newDescription, newTaskType, newEndTime, newCompleted, id);
 
         return deadlineController.getById(id);
     },

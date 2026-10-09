@@ -6,6 +6,12 @@ const userController = require('./controllers/userController');
 const feedbackController = require('./controllers/feedbackController');
 const pushController = require('./controllers/pushController');
 
+// Phiên bản build (dạng <ver>-<hash5>-beta cho bản test/docker; xem scripts/version.js)
+const APP_VERSION = process.env.APP_VERSION || require('../package.json').version;
+
+// Nạp dữ liệu demo CHỈ khi bật SEED_DEMO=1 (production không bật)
+if (process.env.SEED_DEMO === '1') require('./seed_demo')();
+
 const PORT = process.env.PORT || 3000;
 const FRONTEND_DIR = path.join(__dirname, '..', 'frontend');
 
@@ -66,6 +72,10 @@ const server = http.createServer(async (req, res) => {
     // ==========================================
     // 1. RESTFUL API ENDPOINTS CHO AUTH & USERS
     // ==========================================
+    if (pathname === '/api/version' && req.method === 'GET') {
+        return sendJson(res, 200, { success: true, version: APP_VERSION });
+    }
+
     if (pathname === '/api/auth/login' && req.method === 'POST') {
         try {
             const body = await parseJsonBody(req);
@@ -282,6 +292,7 @@ server.listen(PORT, () => {
     console.log(`🚀 [DEADLINE TRACKER SERVER] Đang chạy tại:`);
     console.log(`👉 http://localhost:${PORT}`);
     console.log(`👉 http://localhost:${PORT}/deadline`);
+    console.log(`🏷️  Phiên bản: ${APP_VERSION}`);
     console.log(`📁 CSDL SQL thật: backend/database/deadlines.sqlite`);
     console.log(`🔔 Web Push Notification: Đã kích hoạt Service Worker`);
     console.log(`======================================================\n`);

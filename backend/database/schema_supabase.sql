@@ -45,6 +45,8 @@ CREATE TABLE IF NOT EXISTS deadlines (
     group_name VARCHAR(255),
     group_link VARCHAR(500),
     description TEXT,
+    task_type TEXT NOT NULL DEFAULT 'submit',
+    end_time VARCHAR(5),
     is_completed SMALLINT DEFAULT 0 CHECK(is_completed IN (0, 1)),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -57,6 +59,9 @@ ALTER TABLE deadlines ADD COLUMN IF NOT EXISTS assignees TEXT DEFAULT 'all';
 ALTER TABLE deadlines ADD COLUMN IF NOT EXISTS group_name VARCHAR(255);
 ALTER TABLE deadlines ADD COLUMN IF NOT EXISTS group_link VARCHAR(500);
 ALTER TABLE deadlines ADD COLUMN IF NOT EXISTS description TEXT;
+-- Loại task: TEXT tự do (KHÔNG ENUM/CHECK) -> thêm loại mới chỉ cần sửa code, không sửa CSDL
+ALTER TABLE deadlines ADD COLUMN IF NOT EXISTS task_type TEXT NOT NULL DEFAULT 'submit';
+ALTER TABLE deadlines ADD COLUMN IF NOT EXISTS end_time VARCHAR(5);
 
 -- CHỈ MỤC TỐI ƯU TỐC ĐỘ TRUY VẤN
 CREATE INDEX IF NOT EXISTS idx_deadlines_due_date ON deadlines(due_date);

@@ -6,3 +6,7 @@ npm-debug.log
 /tmp
 *.sqlite-shm
 *.sqlite-wal
+**/*.sqlite
+**/*.sqlite-wal
+**/*.sqlite-shm
+backend/database/vapid.json

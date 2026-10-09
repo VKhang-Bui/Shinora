@@ -3,7 +3,7 @@
  * Tối ưu hóa 2 tầng: HTTP Cache + Optimistic UI 2 Phân khu Local Cache
  */
 
-const APP_VERSION = '1.0.6';
+const APP_VERSION = '1.2.3';
 
 let currentDate = new Date(); // Mặc định thời điểm hôm nay thực tế của máy người dùng
 let todayDate = new Date();    // Mốc thời gian thực để tính toán màu sắc và độ gấp
@@ -546,6 +546,8 @@ async function optimisticCreateDeadline(dlData) {
                 groupName: dlData.groupName || null,
                 groupLink: dlData.groupLink || null,
                 description: dlData.description || null,
+                taskType: dlData.taskType || 'submit',
+                endTime: dlData.endTime || null,
                 isCompleted: dlData.isCompleted ? 1 : 0
             })
         });
@@ -783,8 +785,43 @@ function clearScheduleTable() {
     });
 }
 
+// Lưu tham số lần vẽ tuần gần nhất để vẽ lại khối thực hành khi đổi kích thước cửa sổ
+let _lastWeekRenderArgs = null;
+
+// Loại task có khoảng giờ (hasEndTime + có endTime) => vẽ thành khối kéo dài, không nhét vào 1 ô
+// "HH:MM" hoặc "HH:MM – HH:MM" nếu task có khoảng giờ
+function formatItemTime(dueObj, item) {
+    const start = `${String(dueObj.getHours()).padStart(2, '0')}:${String(dueObj.getMinutes()).padStart(2, '0')}`;
+    return (item && isRangeTask(item)) ? `${start} – ${item.endTime}` : start;
+}
+
+// " · Thực hành" cho loại khác mặc định (loại Nộp bài mặc định không cần ghi)
+function typeLabelSuffix(item) {
+    if (typeof TaskTypes === 'undefined' || !item) return '';
+    const key = TaskTypes.normalize(item.taskType);
+    return key === TaskTypes.DEFAULT_TYPE ? '' : ' · ' + TaskTypes.get(key).label;
+}
+
+// Thẻ loại có khoảng giờ dùng màu xanh ngọc giống khối trên lịch tuần (đã xong -> xám như thường)
+function getItemCardStyle(item, daysLeft) {
+    if (isRangeTask(item)) {
+        if (item.isCompleted) {
+            return { bg: "rgba(134, 142, 150, 0.85)", border: "#6c757d", text: "#ffffff", label: "Đã xong" };
+        }
+        return { bg: "rgba(0, 150, 136, 0.88)", border: "#00796b", text: "#ffffff", label: "Thực hành" };
+    }
+    return getDeadlineColorStyle(daysLeft, item.isCompleted);
+}
+
+function isRangeTask(item) {
+    return typeof TaskTypes !== 'undefined' && TaskTypes.get(item.taskType).hasEndTime && !!item.endTime;
+}
+
 function renderWeekSchedule(items, mondayDate, filterType = "0", todayDate = new Date()) {
     clearScheduleTable();
+    _lastWeekRenderArgs = { items, mondayDate, filterType, todayDate };
+    _currentConflicts = TaskTypes.findConflicts(items || []);
+    clearRangeBlocks();
     if (!items || items.length === 0) return;
 
     const dayKeys = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
@@ -811,6 +848,7 @@ function renderWeekSchedule(items, mondayDate, filterType = "0", todayDate = new
             }
         }
         if (matchedDayIndex === -1) return;
+        if (isRangeTask(item)) return; // vẽ riêng bằng khối kéo dài ở cuối hàm
 
         const dayKey = dayKeys[matchedDayIndex];
         const cellId = `cell-${dayKey}-${item.session}`;
@@ -856,7 +894,7 @@ function renderWeekSchedule(items, mondayDate, filterType = "0", todayDate = new
                     <div style="font-size: 11.5px; font-weight: 700; color: ${styleInfo.text}; display: flex; align-items: center; gap: 4px;">
                         ${checkBtn}
                         <i class="fa fa-clock-o" aria-hidden="true" style="font-size: 11px;"></i> <span>${timeOnly}</span>
-                        ${syncStatusHtml}
+                        ${syncStatusHtml}${conflictIconHtml(item)}
                     </div>
                     <span style="background: rgba(255, 255, 255, 0.7); border: 1px solid ${styleInfo.border}; border-radius: 3px; padding: 1px 5px; font-size: 10px; font-weight: 700; color: ${styleInfo.text}; white-space: nowrap;">
                         ${badgeText}
@@ -870,7 +908,151 @@ function renderWeekSchedule(items, mondayDate, filterType = "0", todayDate = new
         `;
         targetCell.insertAdjacentHTML('beforeend', cardHtml);
     });
+
+    renderRangeBlocks(items, weekDates, filterType);
 }
+
+// ==========================================
+// KHỐI KÉO DÀI THEO KHOẢNG GIỜ (VD: THỰC HÀNH) TRÊN LỊCH TUẦN
+// Lớp phủ định vị tuyệt đối trên bảng, đầu/cuối tính theo giờ thật trong TỪNG hàng ca
+// (Sáng 00-12, Chiều 12-18, Tối 18-24) nên khối đi xuyên qua ranh giới hàng.
+// ==========================================
+const RANGE_ROWS = [
+    { key: 'sang',  start: 0,        end: 12 * 60 },
+    { key: 'chieu', start: 12 * 60,  end: 18 * 60 },
+    { key: 'toi',   start: 18 * 60,  end: 24 * 60 }
+];
+
+// Xung đột giờ của lần vẽ gần nhất (id -> các mục trùng); dùng để hiện dấu ⚠
+let _currentConflicts = {};
+
+function conflictIconHtml(item) {
+    const list = item && _currentConflicts[item.id];
+    if (!list || !list.length) return '';
+    const names = list.map(c => c.title).join(', ');
+    const isWhite = isRangeTask(item);
+    const color = isWhite ? '#ffe082' : '#e8710a';
+    return `<span title="Trùng giờ với: ${escapeHtml(names)}" style="color: ${color}; margin-left: 3px;"><i class="fa fa-exclamation-triangle"></i></span>`;
+}
+
+function clearRangeBlocks() {
+    document.querySelectorAll('#viewLichTheoTuan .range-block').forEach(el => el.remove());
+    // Trả lại padding mặc định cho các ô đã chừa làn
+    document.querySelectorAll('#viewLichTheoTuan td[id^="cell-"]').forEach(td => { td.style.paddingRight = ''; });
+}
+
+function hhmmToMinutes(str) {
+    const m = /^(\d{1,2}):(\d{2})/.exec(String(str || ''));
+    return m ? parseInt(m[1], 10) * 60 + parseInt(m[2], 10) : null;
+}
+
+function renderRangeBlocks(items, weekDates, filterType) {
+    clearRangeBlocks();
+    const container = document.querySelector('#viewLichTheoTuan .table-responsive');
+    if (!container || container.offsetWidth === 0) return; // đang ẩn (xem tháng/ngày)
+    container.style.position = 'relative';
+    const dayKeys = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+
+    // 1. Gom khối theo ngày
+    const byDay = {};
+    items.forEach(item => {
+        if (!isRangeTask(item)) return;
+        if (filterType === 'group' && item.category !== 'group') return;
+        if (filterType === 'personal' && item.category !== 'personal') return;
+        const d = parseDeadlineDate(item.dueDate);
+        const dayZero = new Date(d); dayZero.setHours(0, 0, 0, 0);
+        const idx = weekDates.findIndex(w => w.getTime() === dayZero.getTime());
+        if (idx === -1) return;
+        const startMin = d.getHours() * 60 + d.getMinutes();
+        const endMin = hhmmToMinutes(item.endTime);
+        if (endMin === null || endMin <= startMin) return;
+        (byDay[idx] = byDay[idx] || []).push({ item, d, startMin, endMin, lane: 0 });
+    });
+
+    // 2. Chia làn (các khoảng chồng giờ đứng cạnh nhau) + chừa làn bên phải cho cột ngày
+    const laneCountByDay = {};
+    const padByDay = {};
+    Object.keys(byDay).forEach(idx => {
+        const list = byDay[idx].sort((x, y) => x.startMin - y.startMin || x.endMin - y.endMin);
+        const laneEnds = [];
+        list.forEach(blk => {
+            let l = laneEnds.findIndex(e => e <= blk.startMin);
+            if (l === -1) { l = laneEnds.length; laneEnds.push(blk.endMin); } else { laneEnds[l] = blk.endMin; }
+            blk.lane = l;
+        });
+        laneCountByDay[idx] = laneEnds.length;
+
+        const anchor = document.getElementById(`cell-${dayKeys[idx]}-sang`);
+        if (!anchor) return;
+        const colW = anchor.getBoundingClientRect().width;
+        const frac = laneEnds.length > 1 ? 0.55 : 0.42;
+        const pad = Math.round(Math.min(colW * 0.6, Math.max(colW * frac, 60)));
+        padByDay[idx] = pad;
+        // Chỉ chừa làn ở những hàng ca mà khối đi qua => thẻ nộp bài không bao giờ bị che
+        RANGE_ROWS.forEach(row => {
+            if (list.some(blk => blk.startMin < row.end && blk.endMin > row.start)) {
+                const cell = document.getElementById(`cell-${dayKeys[idx]}-${row.key}`);
+                if (cell) cell.style.paddingRight = pad + 'px';
+            }
+        });
+    });
+
+    // 3. Đo lại SAU khi đã chừa làn (chiều cao hàng có thể đổi do thẻ xuống dòng) rồi đặt khối
+    const cRect = container.getBoundingClientRect();
+    const yOf = (dayKey, minutes) => {
+        const row = RANGE_ROWS.find(r => minutes >= r.start && minutes < r.end) || RANGE_ROWS[RANGE_ROWS.length - 1];
+        const cell = document.getElementById(`cell-${dayKey}-${row.key}`);
+        if (!cell) return null;
+        const r = cell.getBoundingClientRect();
+        const frac = Math.min(1, Math.max(0, (minutes - row.start) / (row.end - row.start)));
+        return r.top - cRect.top + frac * r.height;
+    };
+
+    Object.keys(byDay).forEach(idx => {
+        const dayKey = dayKeys[idx];
+        const pad = padByDay[idx];
+        const anchor = document.getElementById(`cell-${dayKey}-sang`);
+        if (!pad || !anchor) return;
+        const aRect = anchor.getBoundingClientRect();
+        const lanes = laneCountByDay[idx];
+        const areaLeft = aRect.right - cRect.left - pad;
+        const laneW = (pad - 4) / lanes;
+
+        byDay[idx].forEach(blk => {
+            const top = yOf(dayKey, blk.startMin);
+            const bottom = yOf(dayKey, Math.min(blk.endMin, 24 * 60 - 1));
+            if (top === null || bottom === null) return;
+
+            const item = blk.item;
+            const typeInfo = TaskTypes.get(item.taskType);
+            const timeStr = `${String(blk.d.getHours()).padStart(2, '0')}:${String(blk.d.getMinutes()).padStart(2, '0')} – ${item.endTime}`;
+            const width = laneW - 3;
+            const el = document.createElement('div');
+            el.className = 'range-block' + (item.isCompleted ? ' range-done' : '') + (width < 80 ? ' range-narrow' : '');
+            el.style.cssText = `position:absolute; left:${areaLeft + blk.lane * laneW}px; width:${width}px; top:${top}px; height:${Math.max(bottom - top, 24)}px;`;
+            const clash = _currentConflicts[item.id];
+            el.title = `${typeInfo.label}: ${timeStr}` + (clash && clash.length ? ` | Trùng giờ với: ${clash.map(c => c.title).join(', ')}` : '');
+            el.onclick = function (ev) { showDeadlineDetail(item.id, ev, this); };
+            el.innerHTML = `<div class="range-block-time"><i class="fa ${typeInfo.icon}"></i> ${timeStr}${conflictIconHtml(item)}</div><div class="range-block-title">${escapeHtml(item.title)}</div>`;
+            container.appendChild(el);
+        });
+    });
+}
+
+let _rangeResizeTimer = null;
+window.addEventListener('resize', function () {
+    clearTimeout(_rangeResizeTimer);
+    _rangeResizeTimer = setTimeout(function () {
+        if (_lastWeekRenderArgs) {
+            const a = _lastWeekRenderArgs;
+            renderRangeBlocks(a.items || [], (function () {
+                const w = [];
+                for (let i = 0; i < 7; i++) { const x = new Date(a.mondayDate); x.setDate(a.mondayDate.getDate() + i); x.setHours(0, 0, 0, 0); w.push(x); }
+                return w;
+            })(), a.filterType);
+        }
+    }, 120);
+});
 
 function renderMonthSchedule(items, year, month, filterType = "0", todayDate = new Date()) {
     const container = document.getElementById("monthGridBody");
@@ -926,9 +1108,9 @@ function renderMonthSchedule(items, year, month, filterType = "0", todayDate = n
 
         displayItems.forEach(dl => {
             const daysLeft = calculateDaysLeft(dl.dueDate, todayDate);
-            const styleInfo = getDeadlineColorStyle(daysLeft, dl.isCompleted);
+            const styleInfo = getItemCardStyle(dl, daysLeft);
             const dueObj = parseDeadlineDate(dl.dueDate);
-            const timeOnly = `${String(dueObj.getHours()).padStart(2, '0')}:${String(dueObj.getMinutes()).padStart(2, '0')}`;
+            const timeOnly = formatItemTime(dueObj, dl);
 
             let mSync = '';
             if (dl._syncStatus === 'pending') {
@@ -937,7 +1119,8 @@ function renderMonthSchedule(items, year, month, filterType = "0", todayDate = n
                 mSync = ' <i class="fa fa-exclamation-triangle" style="color: #d93025; margin-left: 2px;"></i>';
             }
 
-            const checkIcon = dl.isCompleted ? '<i class="fa fa-check" style="font-size: 10px; margin-right: 3px; color: #495057;"></i>' : '';
+            const checkColor = styleInfo.text === '#ffffff' ? '#ffffff' : '#495057';
+            const checkIcon = dl.isCompleted ? `<i class="fa fa-check" style="font-size: 10px; margin-right: 3px; color: ${checkColor};"></i>` : '';
             chipsHtml += `
                 <div class="month-deadline-chip" onclick="showDeadlineDetail('${dl.id}', event, this)" title="${escapeHtml(dl.title)} (Hạn: ${timeOnly})" style="background-color: ${styleInfo.bg}; border-left-color: ${styleInfo.border} !important; color: ${styleInfo.text};">
                     ${checkIcon}<span class="month-chip-title">${escapeHtml(dl.title)}</span>
@@ -1012,11 +1195,12 @@ function showDayDeadlinesModal(dateKey, event, triggerEl) {
     let itemsHtml = '';
     dayDeadlines.forEach(dl => {
         const daysLeft = calculateDaysLeft(dl.dueDate, todayDate);
-        const styleInfo = getDeadlineColorStyle(daysLeft, dl.isCompleted);
+        const styleInfo = getItemCardStyle(dl, daysLeft);
         const dueObj = parseDeadlineDate(dl.dueDate);
-        const timeOnly = `${String(dueObj.getHours()).padStart(2, '0')}:${String(dueObj.getMinutes()).padStart(2, '0')}`;
+        const timeOnly = formatItemTime(dueObj, dl);
 
-        const checkIcon = dl.isCompleted ? '<i class="fa fa-check" style="font-size: 11px; margin-right: 4px; color: #495057;"></i>' : '';
+        const checkColor = styleInfo.text === '#ffffff' ? '#ffffff' : '#495057';
+        const checkIcon = dl.isCompleted ? `<i class="fa fa-check" style="font-size: 11px; margin-right: 4px; color: ${checkColor};"></i>` : '';
         itemsHtml += `
             <div class="popover-day-item" onclick="closeMonthDayListPopover(); showDeadlineDetail('${dl.id}', event, this);" style="background-color: ${styleInfo.bg}; border-left-color: ${styleInfo.border} !important; color: ${styleInfo.text};">
                 <span class="popover-day-title" title="${escapeHtml(dl.title)}">${checkIcon}${escapeHtml(dl.title)}</span>
@@ -1143,6 +1327,7 @@ function renderMobileDayView() {
     });
 
     dayItems.sort((a, b) => parseDeadlineDate(a.dueDate).getTime() - parseDeadlineDate(b.dueDate).getTime());
+    _currentConflicts = TaskTypes.findConflicts(currentDeadlines || []);
 
     const container = $('#mobileDayDeadlineList');
     if (!container.length) return;
@@ -1159,9 +1344,9 @@ function renderMobileDayView() {
     let html = '';
     dayItems.forEach(item => {
         const daysLeft = calculateDaysLeft(item.dueDate, todayDate);
-        const styleInfo = getDeadlineColorStyle(daysLeft, item.isCompleted);
+        const styleInfo = getItemCardStyle(item, daysLeft);
         const dueObj = parseDeadlineDate(item.dueDate);
-        const timeOnly = `${String(dueObj.getHours()).padStart(2, '0')}:${String(dueObj.getMinutes()).padStart(2, '0')}`;
+        const timeOnly = formatItemTime(dueObj, typeof dl !== 'undefined' ? dl : (typeof item !== 'undefined' ? item : null));
 
         let syncStatusHtml = '';
         if (item._syncStatus === 'pending') {
@@ -1176,23 +1361,39 @@ function renderMobileDayView() {
         else if (daysLeft === 0) badgeText = `Hôm nay`;
         else badgeText = `Còn ${daysLeft} ngày`;
 
+        const isWhiteText = styleInfo.text === '#ffffff';
+        const checkBtnColor = isWhiteText ? '#ffffff' : (item.isCompleted ? '#2e7d32' : styleInfo.text);
         const checkBtn = `
             <span class="deadline-check-btn ${item.isCompleted ? 'completed' : ''}" onclick="toggleDeadlineComplete('${item.id}', event)" title="${item.isCompleted ? 'Đã xong / Nhấp để đánh dấu chưa xong' : 'Nhấp để đánh dấu hoàn thành'}" style="margin-right: 4px; cursor: pointer;">
-                <i class="fa ${item.isCompleted ? 'fa-check-circle' : 'fa-circle-o'}" style="color: ${item.isCompleted ? '#2e7d32' : styleInfo.text}; font-size: 14px;"></i>
+                <i class="fa ${item.isCompleted ? 'fa-check-circle' : 'fa-circle-o'}" style="color: ${checkBtnColor}; font-size: 14px;"></i>
             </span>
         `;
+
+        const badgeTagStyle = isWhiteText
+            ? 'background: rgba(255, 255, 255, 0.22); border-color: rgba(255, 255, 255, 0.6) !important; color: #ffffff !important;'
+            : `border-color: ${styleInfo.border} !important; color: ${styleInfo.text} !important;`;
+
+        const topRowBorder = isWhiteText
+            ? 'border-bottom-color: rgba(255, 255, 255, 0.25) !important;'
+            : 'border-bottom-color: rgba(0, 0, 0, 0.1) !important;';
+
+        const categoryBadgeStyle = isWhiteText
+            ? 'background: rgba(255, 255, 255, 0.25); border: 1px solid rgba(255, 255, 255, 0.4); border-radius: 4px; padding: 2px 7px; font-size: 11px; font-weight: 600; color: #ffffff;'
+            : `background: rgba(255, 255, 255, 0.75); border: 1px solid rgba(0,0,0,0.1); border-radius: 4px; padding: 2px 7px; font-size: 11px; font-weight: 600; color: ${item.category === 'group' ? '#0f9d58' : '#0070ba'};`;
+
+        const iconClass = (typeof TaskTypes !== 'undefined' && TaskTypes.get(item.taskType)) ? TaskTypes.get(item.taskType).icon : 'fa-clock-o';
 
         html += `
             <div class="m-deadline-item-card ${item.isCompleted ? 'completed' : ''}" style="background-color: ${styleInfo.bg} !important; border: 1.5px solid ${styleInfo.border} !important; color: ${styleInfo.text} !important;" onclick="showDeadlineDetail('${item.id}', event, this)">
                 <!-- HEADER THẺ ĐỒNG BỘ VỚI THẺ TRÊN LAPTOP -->
-                <div class="m-card-top-row" style="border-bottom-color: rgba(0,0,0,0.1) !important;">
+                <div class="m-card-top-row" style="${topRowBorder}">
                     <div class="m-card-time-group" style="color: ${styleInfo.text} !important;">
                         ${checkBtn}
-                        <i class="fa fa-clock-o"></i>
+                        <i class="fa ${iconClass}"></i>
                         <span>${timeOnly}</span>
                         ${syncStatusHtml}
                     </div>
-                    <span class="m-card-badge-tag" style="border-color: ${styleInfo.border} !important; color: ${styleInfo.text} !important;">
+                    <span class="m-card-badge-tag" style="${badgeTagStyle}">
                         ${badgeText}
                     </span>
                 </div>
@@ -1204,17 +1405,17 @@ function renderMobileDayView() {
 
                 <!-- FOOTER THẺ: PHÂN LOẠI & NGƯỜI LÀM -->
                 <div class="m-card-bottom-row">
-                    <span class="m-badge-category" style="background: rgba(255, 255, 255, 0.75); border: 1px solid rgba(0,0,0,0.1); border-radius: 4px; padding: 2px 7px; font-size: 11px; font-weight: 600; color: ${item.category === 'group' ? '#0f9d58' : '#0070ba'};">
+                    <span class="m-badge-category" style="${categoryBadgeStyle}">
                         <i class="fa ${item.category === 'group' ? 'fa-users' : 'fa-user'}"></i>
                         ${item.category === 'group' ? (item.groupName ? escapeHtml(item.groupName) : 'Cả nhóm') : 'Cá nhân'}
                     </span>
                     ${item.userName ? `
-                    <span style="font-size: 11px; color: ${styleInfo.text}; opacity: 0.85; display: inline-flex; align-items: center; gap: 4px;">
+                    <span style="font-size: 11px; color: ${styleInfo.text}; opacity: 0.88; display: inline-flex; align-items: center; gap: 4px;">
                         <i class="fa fa-user-circle-o"></i> ${escapeHtml(item.userName)}
                     </span>` : ''}
                 </div>
                 ${item.description ? `
-                <div style="font-size: 11.5px; color: ${styleInfo.text}; opacity: 0.82; margin-top: 6px; font-style: italic; line-height: 1.35;">
+                <div style="font-size: 11.5px; color: ${styleInfo.text}; opacity: 0.88; margin-top: 6px; font-style: italic; line-height: 1.35;">
                     <i class="fa fa-pencil" style="font-size: 10px;"></i> ${escapeHtml(item.description)}
                 </div>` : ''}
             </div>
@@ -1472,7 +1673,7 @@ function showDeadlineDetail(id, event, element) {
     currentDetailId = id;
 
     const daysLeft = calculateDaysLeft(item.dueDate, todayDate);
-    const styleInfo = getDeadlineColorStyle(daysLeft, item.isCompleted);
+    const styleInfo = getItemCardStyle(item, daysLeft);
 
     $('#detailColorBox').css({
         'background-color': styleInfo.bg,
@@ -1484,7 +1685,7 @@ function showDeadlineDetail(id, event, element) {
     const dateStrVi = formatVietnameseDate(dueObj);
     const hh = String(dueObj.getHours()).padStart(2, '0');
     const mm = String(dueObj.getMinutes()).padStart(2, '0');
-    $('#detailTimeFullText').text(`${dateStrVi} · ${hh}:${mm}`);
+    $('#detailTimeFullText').text(`${dateStrVi} · ${formatItemTime(dueObj, item)}`);
 
     let badgeText = '';
     if (daysLeft < 0) {
@@ -1494,8 +1695,9 @@ function showDeadlineDetail(id, event, element) {
     } else {
         badgeText = `Còn ${daysLeft} ngày`;
     }
+    const badgeTextColor = styleInfo.text === '#ffffff' ? styleInfo.border : styleInfo.text;
     $('#detailTimeBadge').text(badgeText).css({
-        'color': styleInfo.text,
+        'color': badgeTextColor,
         'border': `1px solid ${styleInfo.border}`,
         'background': 'rgba(255,255,255,0.85)'
     });
@@ -1512,7 +1714,7 @@ function showDeadlineDetail(id, event, element) {
 
     if (item.category === 'group') {
         $('#detailCategoryIcon').attr('class', 'fa fa-users').css('color', '#0f9d58');
-        $('#detailCategoryText').text('Cả nhóm');
+        $('#detailCategoryText').text('Cả nhóm' + typeLabelSuffix(item));
         $('#detailAssigneesRow').show();
 
         let assigneesStr = 'Toàn bộ nhóm';
@@ -1534,7 +1736,7 @@ function showDeadlineDetail(id, event, element) {
         $('#detailAssigneesText').text(`Phân công: ${assigneesStr}`);
     } else {
         $('#detailCategoryIcon').attr('class', 'fa fa-user').css('color', '#1a73e8');
-        $('#detailCategoryText').text('Cá nhân');
+        $('#detailCategoryText').text('Cá nhân' + typeLabelSuffix(item));
         $('#detailAssigneesRow').hide();
     }
 
@@ -1718,7 +1920,7 @@ function copyDeadlineWithPrompt(id) {
 - Tiêu đề: ${item.title}
 - Hạn nộp: ${timeFormatted} ngày ${dateFormatted}
 - Thời gian còn lại: ${remainingStr}
-- Phân loại: ${categoryName}
+- Phân loại: ${categoryName}${typeLabelSuffix(item)}
 
 👉 Prompt gợi ý AI:
 "Tôi có một deadline như trên. Hãy giúp tôi lập kế hoạch chi tiết từng bước (action plan) và phân bổ thời gian hợp lý để hoàn thành công việc đúng hạn!"`;
@@ -1794,7 +1996,7 @@ function printDeadlineDetail(id) {
                 <div class="item"><span class="label">Tiêu đề:</span> <b>${escapeHtml(item.title)}</b></div>
                 <div class="item"><span class="label">Hạn nộp:</span> <b>${timeFormatted} ngày ${dateFormatted}</b></div>
                 <div class="item"><span class="label">Thời gian còn lại:</span> <span class="badge">${remainingStr}</span></div>
-                <div class="item"><span class="label">Phân loại:</span> <b>${categoryName}</b></div>
+                <div class="item"><span class="label">Phân loại:</span> <b>${categoryName}${typeLabelSuffix(item)}</b></div>
             </div>
             <script>window.onload = function() { window.print(); window.close(); }<\/script>
         </body>
@@ -1810,6 +2012,7 @@ let miniCalYear = new Date().getFullYear();
 let miniCalMonth = new Date().getMonth();
 let selectedModalDate = new Date(Date.now() + 7 * 86400000);
 let activeModalCategory = 'personal';
+let activeModalTaskType = 'submit';
 let editingDeadlineId = null;
 
 function toggleCreateDropdown(event) {
@@ -1824,6 +2027,8 @@ function openCreateDeadlineModal(category) {
     $('#checkAssignAll').prop('checked', true);
     $('#assigneesContainer').hide();
     setModalCategory(category || 'personal');
+    setModalTaskType('submit');
+    $('#modalEndTimeInput').val('11:00');
 
     const nextWeek = new Date();
     nextWeek.setDate(nextWeek.getDate() + 7);
@@ -1855,6 +2060,8 @@ function openEditDeadlineModal(id) {
     editingDeadlineId = targetId;
     $('#btnModalSave').text('Cập nhật');
     setModalCategory(item.category || 'personal');
+    setModalTaskType(item.taskType || 'submit');
+    $('#modalEndTimeInput').val(item.endTime || '11:00');
     $('#modalInputTitle').val(item.title);
     $('#modalInputGroupName').val(item.groupName || "");
     $('#modalInputGroupLink').val(item.groupLink || "");
@@ -1917,6 +2124,33 @@ function setModalCategory(category) {
             loadRegisteredUsers();
         }
     }
+}
+
+// Vẽ các nút chọn loại task từ cấu hình dùng chung (thêm loại mới chỉ cần sửa task-types.js)
+function renderModalTaskTypeTabs() {
+    const box = $('#modalTaskTypeTabs');
+    if (!box.length || typeof TaskTypes === 'undefined') return;
+    let html = '';
+    Object.keys(TaskTypes.TASK_TYPES).forEach(key => {
+        const t = TaskTypes.TASK_TYPES[key];
+        html += `<button type="button" id="taskTypeBtn_${key}" onclick="setModalTaskType('${key}')" style="padding: 5px 14px; border-radius: 16px; font-size: 12.5px; font-weight: 600; cursor: pointer; border: 1px solid #dadce0; background: #f1f3f4; color: #444746;"><i class="fa ${t.icon}"></i> ${escapeHtml(t.label)}</button>`;
+    });
+    box.html(html);
+}
+
+function setModalTaskType(type) {
+    if (typeof TaskTypes === 'undefined') return;
+    if ($('#modalTaskTypeTabs button').length === 0) renderModalTaskTypeTabs();
+    activeModalTaskType = TaskTypes.normalize(type);
+    Object.keys(TaskTypes.TASK_TYPES).forEach(key => {
+        const active = key === activeModalTaskType;
+        $('#taskTypeBtn_' + key).css({
+            'background': active ? '#c2e7ff' : '#f1f3f4',
+            'color': active ? '#001d35' : '#444746',
+            'border-color': active ? '#7fcfff' : '#dadce0'
+        });
+    });
+    $('#modalEndTimeWrap').css('display', TaskTypes.get(activeModalTaskType).hasEndTime ? 'inline-flex' : 'none');
 }
 
 function toggleModalCalendarPopup(e) {
@@ -2043,6 +2277,19 @@ async function saveNewDeadlineFromModal() {
     if (hour >= 12 && hour < 18) session = 'chieu';
     else if (hour >= 18) session = 'toi';
 
+    // LOẠI TASK CÓ KHOẢNG GIỜ (VD: THỰC HÀNH): CẦN GIỜ KẾT THÚC HỢP LỆ VÀ SAU GIỜ BẮT ĐẦU
+    let endTime = null;
+    if (TaskTypes.get(activeModalTaskType).hasEndTime) {
+        const startStr = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+        endTime = TaskTypes.normalizeEndTime(activeModalTaskType, $('#modalEndTimeInput').val(), startStr);
+        if (!endTime) {
+            const msg = 'Giờ kết thúc không hợp lệ! Nhập dạng HH:MM và phải sau giờ bắt đầu (trong cùng ngày).';
+            if (typeof toastr !== 'undefined') toastr.warning(msg); else alert(msg);
+            $('#modalEndTimeInput').focus();
+            return;
+        }
+    }
+
     const y = selectedModalDate.getFullYear();
     const m = String(selectedModalDate.getMonth() + 1).padStart(2, '0');
     const d = String(selectedModalDate.getDate()).padStart(2, '0');
@@ -2058,6 +2305,20 @@ async function saveNewDeadlineFromModal() {
         if (typeof toastr !== 'undefined') toastr.warning(errorMsg);
         else alert(errorMsg);
         return;
+    }
+
+    // CẢNH BÁO TRÙNG GIỜ (không chặn): mốc nộp nằm hẳn trong khoảng thực hành, hoặc 2 khoảng chồng nhau
+    const clashList = TaskTypes.conflictsFor({
+        id: editingDeadlineId || '__new__',
+        dueDate: dueDateStr,
+        taskType: activeModalTaskType,
+        endTime: endTime,
+        isCompleted: $('#modalInputCompleted').is(':checked') ? 1 : 0
+    }, currentDeadlines || []);
+    if (clashList.length) {
+        const names = clashList.slice(0, 3).map(c => `• ${c.title} (${formatItemTime(parseDeadlineDate(c.dueDate), c)})`).join('\n');
+        const more = clashList.length > 3 ? `\n... và ${clashList.length - 3} mục khác` : '';
+        if (!window.confirm(`⚠ Trùng giờ với:\n${names}${more}\n\nVẫn lưu?`)) return;
     }
 
     let assignees = 'all';
@@ -2098,6 +2359,8 @@ async function saveNewDeadlineFromModal() {
             groupName: groupName,
             groupLink: groupLink,
             description: description,
+            taskType: activeModalTaskType,
+            endTime: endTime,
             isCompleted: isCompleted
         });
         return;
@@ -2116,6 +2379,8 @@ async function saveNewDeadlineFromModal() {
         groupName: groupName,
         groupLink: groupLink,
         description: description,
+        taskType: activeModalTaskType,
+        endTime: endTime,
         isCompleted: isCompleted
     });
 
@@ -3152,6 +3417,7 @@ const HELP_TOPICS_DATA = {
                                 <div style="background: #f6ffed; border: 1px solid #52c41a; color: #389e0d; border-radius: 2px; padding: 3px; font-weight: 600;">🌿 2 tháng</div>
                                 <div style="background: #f5f5f5; border: 1px dashed #bfbfbf; color: #8c8c8c; border-radius: 2px; padding: 3px;">✔ Đã xong</div>
                                 <div style="background: #f5f5f5; border: 1px solid #8c8c8c; color: #595959; border-radius: 2px; padding: 3px;">⏳ Quá hạn</div>
+                                <div style="grid-column: span 3; background: rgba(0, 150, 136, 0.88); border: 1px solid #00796b; color: #ffffff; border-radius: 2px; padding: 3px; font-weight: 600; text-align: center;">🔬 Thực hành (Khối giờ)</div>
                             </div>
                         </div>
                     </div>
@@ -3231,6 +3497,17 @@ const HELP_TOPICS_DATA = {
                     </div>
                     <div style="font-size: 11.5px; color: #3c4043;">
                         Deadline đã qua ngày giờ nộp nhưng chưa được tích xong.
+                    </div>
+                </div>
+
+                <!-- Xanh ngọc (Thực hành) -->
+                <div class="help-field-card" style="border-left: 3px solid #00796b; background: #f2f9f8;">
+                    <div class="field-name" style="color: #00796b;">
+                        <span style="display: inline-block; width: 12px; height: 12px; background: rgba(0, 150, 136, 0.88); border: 1px solid #00796b; border-radius: 2px;"></span>
+                        Màu xanh ngọc &middot; Lịch Thực hành [khoảng thời gian]
+                    </div>
+                    <div style="font-size: 11.5px; color: #3c4043;">
+                        Dành riêng cho các buổi thực hành, seminar, làm việc có giờ bắt đầu và giờ kết thúc. Trên lịch tuần, khối tự động kéo dài đi qua các ca và tách làn riêng biệt; trên giao diện điện thoại và lịch tháng hiển thị màu xanh ngọc đồng bộ.
                     </div>
                 </div>
             </div>

@@ -486,6 +486,79 @@ async function runTestSuite() {
 
 
     // -------------------------------------------------------------
+    // 10. TASK TYPE (NỘP BÀI / THỰC HÀNH) & KHOẢNG GIỜ
+    // -------------------------------------------------------------
+    console.log(`\n${BOLD}${CYAN}[Nhóm 10] Loại task (task_type) & giờ kết thúc${RESET}`);
+    const TT = require('../frontend/shared/js/task-types');
+    assert(TT.normalize('practice') === 'practice' && TT.normalize('xyz') === 'submit' && TT.normalize(undefined) === 'submit', 'normalize: loại lạ/rỗng rơi về submit');
+    assert(TT.normalizeEndTime('practice', '15:00', '10:00') === '15:00', 'normalizeEndTime: hợp lệ khi sau giờ bắt đầu');
+    assert(TT.normalizeEndTime('practice', '09:00', '10:00') === null, 'normalizeEndTime: trước giờ bắt đầu bị loại');
+    assert(TT.normalizeEndTime('practice', '25:00', '10:00') === null, 'normalizeEndTime: giờ sai định dạng bị loại');
+    assert(TT.normalizeEndTime('submit', '15:00', '10:00') === null, 'normalizeEndTime: loại không có khoảng giờ -> null');
+
+    // 10b. Xung đột giờ
+    const mk = (id, due, type, end, done) => ({ id, dueDate: due, taskType: type, endTime: end, isCompleted: done ? 1 : 0 });
+    const P = mk('p', '2030-01-15T13:00:00', 'practice', '17:00');
+    assert(TT.conflictBetween(P, mk('s1', '2030-01-15T17:00:00', 'submit')) === false, 'Nộp đúng giờ kết thúc (17:00) KHÔNG xung đột');
+    assert(TT.conflictBetween(P, mk('s2', '2030-01-15T13:00:00', 'submit')) === false, 'Nộp đúng giờ bắt đầu KHÔNG xung đột');
+    assert(TT.conflictBetween(P, mk('s3', '2030-01-15T15:00:00', 'submit')) === true, 'Nộp 15:00 nằm trong 13:00-17:00 => xung đột');
+    assert(TT.conflictBetween(mk('s4', '2030-01-15T09:00:00', 'submit'), mk('p2', '2030-01-15T09:05:00', 'practice', '11:00')) === false, 'Nộp 9:00 rồi thực hành 9:05 KHÔNG xung đột');
+    assert(TT.conflictBetween(P, mk('p3', '2030-01-15T16:00:00', 'practice', '19:00')) === true, 'Hai thực hành chồng giờ => xung đột');
+    assert(TT.conflictBetween(P, mk('p4', '2030-01-15T17:00:00', 'practice', '19:00')) === false, 'Hai thực hành nối tiếp (chạm mép) KHÔNG xung đột');
+    assert(TT.conflictBetween(P, mk('s5', '2030-01-16T15:00:00', 'submit')) === false, 'Khác ngày KHÔNG xung đột');
+    assert(TT.conflictBetween(P, mk('s6', '2030-01-15T15:00:00', 'submit', null, true)) === false, 'Mục đã hoàn thành bỏ qua');
+    assert(TT.conflictBetween(mk('a', '2030-01-15T10:00:00', 'submit'), mk('b', '2030-01-15T10:00:00', 'submit')) === false, 'Hai mốc nộp bài không bao giờ xung đột');
+    const cmap = TT.findConflicts([P, mk('s3', '2030-01-15T15:00:00', 'submit'), mk('s1', '2030-01-15T17:00:00', 'submit')]);
+    assert(cmap.p && cmap.p.length === 1 && cmap.s3 && !cmap.s1, 'findConflicts trả đúng cặp xung đột');
+    assert(TT.conflictsFor(mk('__new__', '2030-01-15T14:00:00', 'submit'), [P]).length === 1, 'conflictsFor: ứng viên mới trùng thực hành');
+
+    const ttId = 'tt-' + Date.now();
+    const resTtCreate = await request({ host: HOST, port: PORT, path: '/api/deadlines', method: 'POST', headers: { 'Content-Type': 'application/json' } }, {
+        id: ttId, title: 'Thực hành test', dueDate: '2030-01-15T10:00:00', session: 'sang', category: 'group',
+        taskType: 'practice', endTime: '15:00'
+    });
+    assert(resTtCreate.statusCode === 201 || resTtCreate.statusCode === 200, 'POST thực hành thành công');
+    const gotTt = resTtCreate.json && resTtCreate.json.data;
+    assert(gotTt && gotTt.taskType === 'practice' && gotTt.endTime === '15:00', 'Lưu & trả về taskType=practice, endTime=15:00');
+
+    const resTtBad = await request({ host: HOST, port: PORT, path: '/api/deadlines', method: 'POST', headers: { 'Content-Type': 'application/json' } }, {
+        id: ttId + '-bad', title: 'Loại lạ', dueDate: '2030-01-16T10:00:00', session: 'sang', category: 'group',
+        taskType: 'khong-ton-tai', endTime: '15:00'
+    });
+    const badData = resTtBad.json && resTtBad.json.data;
+    assert(badData && badData.taskType === 'submit' && badData.endTime === null, 'taskType lạ được chuẩn hóa về submit, bỏ endTime');
+
+    const resTtOld = await request({ host: HOST, port: PORT, path: '/api/deadlines', method: 'POST', headers: { 'Content-Type': 'application/json' } }, {
+        id: ttId + '-old', title: 'Không gửi taskType (client cũ)', dueDate: '2030-01-17T10:00:00', session: 'sang', category: 'group'
+    });
+    const oldData = resTtOld.json && resTtOld.json.data;
+    assert(oldData && oldData.taskType === 'submit', 'Không gửi taskType -> mặc định submit (tương thích cũ)');
+
+    const resTtBadEnd = await request({ host: HOST, port: PORT, path: '/api/deadlines', method: 'POST', headers: { 'Content-Type': 'application/json' } }, {
+        id: ttId + '-be', title: 'Giờ kết thúc sai', dueDate: '2030-01-18T10:00:00', session: 'sang', category: 'group',
+        taskType: 'practice', endTime: '09:00'
+    });
+    const beData = resTtBadEnd.json && resTtBadEnd.json.data;
+    assert(beData && beData.endTime === null, 'Giờ kết thúc trước giờ bắt đầu bị bỏ (null)');
+
+    const resTtPut = await request({ host: HOST, port: PORT, path: '/api/deadlines/' + ttId, method: 'PUT', headers: { 'Content-Type': 'application/json' } }, {
+        endTime: '17:30'
+    });
+    assert(resTtPut.json && resTtPut.json.data && resTtPut.json.data.endTime === '17:30' && resTtPut.json.data.taskType === 'practice', 'PUT đổi endTime giữ nguyên taskType');
+
+    const resTtList = await request({ host: HOST, port: PORT, path: '/api/deadlines', method: 'GET' });
+    const listed = (resTtList.json && resTtList.json.data || []).find(d => d.id === ttId);
+    assert(listed && listed.taskType === 'practice' && listed.endTime === '17:30', 'GET danh sách có taskType & endTime');
+
+    for (const suffix of ['', '-bad', '-old', '-be']) {
+        await request({ host: HOST, port: PORT, path: '/api/deadlines/' + ttId + suffix, method: 'DELETE' });
+    }
+
+    const resVer = await request({ host: HOST, port: PORT, path: '/api/version', method: 'GET' });
+    assert(resVer.statusCode === 200 && typeof resVer.json.version === 'string', 'GET /api/version trả về phiên bản');
+
+
+    // -------------------------------------------------------------
     // TỔNG KẾT BÁO CÁO
     // -------------------------------------------------------------
     console.log(`\n${BOLD}${CYAN}==============================================================${RESET}`);
